@@ -1,0 +1,149 @@
+services:
+  metera:
+    build:
+      context: .
+    container_name: metera-app
+    env_file:
+      - .env.pilot.local
+    environment:
+      METERA_ENVIRONMENT: ${METERA_ENVIRONMENT:-docker}
+      METERA_UPSTREAM_BASE_URL: ${METERA_UPSTREAM_BASE_URL:-http://mock-upstream:8010}
+      METERA_UPSTREAM_API_KEY: ${METERA_UPSTREAM_API_KEY:-}
+      METERA_UPSTREAM_TIMEOUT_SECONDS: ${METERA_UPSTREAM_TIMEOUT_SECONDS:-60}
+      METERA_UPSTREAM_MAX_RETRIES: ${METERA_UPSTREAM_MAX_RETRIES:-1}
+      METERA_EXACT_CACHE_BACKEND: ${METERA_EXACT_CACHE_BACKEND:-redis}
+      METERA_REDIS_URL: ${METERA_REDIS_URL:-redis://redis:6379/0}
+      METERA_SEMANTIC_ENABLED: ${METERA_SEMANTIC_ENABLED:-true}
+      METERA_SEMANTIC_STORE_BACKEND: ${METERA_SEMANTIC_STORE_BACKEND:-pgvector}
+      METERA_SEMANTIC_STORE_DSN: ${METERA_SEMANTIC_STORE_DSN:-postgresql://postgres:postgres@pgvector:5432/metera}
+      METERA_POLICY_STORE_DSN: ${METERA_POLICY_STORE_DSN:-postgresql://postgres:postgres@pgvector:5432/metera}
+      METERA_DEPLOYMENT_PROFILE: ${METERA_DEPLOYMENT_PROFILE:-pilot-local}
+      METERA_STRICT_STARTUP_VALIDATION: ${METERA_STRICT_STARTUP_VALIDATION:-true}
+      METERA_SEMANTIC_MODEL_NAME: ${METERA_SEMANTIC_MODEL_NAME:-sentence-transformers/all-MiniLM-L6-v2}
+      METERA_SEMANTIC_THRESHOLD: ${METERA_SEMANTIC_THRESHOLD:-0.9}
+      METERA_SEMANTIC_SHADOW_THRESHOLD: ${METERA_SEMANTIC_SHADOW_THRESHOLD:-0.8}
+      METERA_SEMANTIC_MAX_TEMPERATURE: ${METERA_SEMANTIC_MAX_TEMPERATURE:-0.2}
+      METERA_DUAL_MODE_ENABLED: ${METERA_DUAL_MODE_ENABLED:-false}
+      METERA_SEMANTIC_DISABLED_NAMESPACE_PREFIXES: ${METERA_SEMANTIC_DISABLED_NAMESPACE_PREFIXES:-browser-,agent-,workflow-}
+      METERA_SEMANTIC_HIGH_RISK_NAMESPACE_PREFIXES: ${METERA_SEMANTIC_HIGH_RISK_NAMESPACE_PREFIXES:-faq-billing}
+      METERA_DEFAULT_EXACT_TTL_SECONDS: ${METERA_DEFAULT_EXACT_TTL_SECONDS:-3600}
+      METERA_DEFAULT_SEMANTIC_TTL_SECONDS: ${METERA_DEFAULT_SEMANTIC_TTL_SECONDS:-86400}
+      METERA_DLP_ENABLED: ${METERA_DLP_ENABLED:-true}
+      METERA_DLP_ANALYZER_MODE: ${METERA_DLP_ANALYZER_MODE:-auto}
+      METERA_DLP_SCRUB_LEVEL: ${METERA_DLP_SCRUB_LEVEL:-technical}
+      METERA_DLP_CUSTOM_DETECTORS_JSON: '[{"name":"internal_session_token","pattern":"\\bmetera_tok_[A-Za-z0-9]{24}\\b"},{"name":"internal_db_password","pattern":"internal_pwd_[A-Za-z0-9]{12}","replacement":"[REDACTED_INTERNAL_DB_PASSWORD]"}]'
+      METERA_DLP_CUSTOM_DETECTORS_YAML_PATH: ${METERA_DLP_CUSTOM_DETECTORS_YAML_PATH:-./config/detectors.example.yaml}
+      METERA_NAMESPACE_HEADER: ${METERA_NAMESPACE_HEADER:-x-metera-namespace}
+      METERA_PROVIDER_AUTH_HEADER: ${METERA_PROVIDER_AUTH_HEADER:-authorization}
+      METERA_ADMIN_API_KEY: ${METERA_ADMIN_API_KEY:-dev-admin-key}
+      METERA_CONTROLPLANE_IDENTITY_ENABLED: ${METERA_CONTROLPLANE_IDENTITY_ENABLED:-false}
+      METERA_CONTROLPLANE_IDENTITY_SEED_ENABLED: ${METERA_CONTROLPLANE_IDENTITY_SEED_ENABLED:-false}
+      METERA_CONTROLPLANE_STATIC_API_KEY: ${METERA_CONTROLPLANE_STATIC_API_KEY:-}
+      METERA_TENANT_QUERY_PARAM_FALLBACK_ENABLED: ${METERA_TENANT_QUERY_PARAM_FALLBACK_ENABLED:-false}
+      METERA_REQUEST_EVENT_LOGGING_ENABLED: ${METERA_REQUEST_EVENT_LOGGING_ENABLED:-false}
+      METERA_REQUEST_LEDGER_ENABLED: ${METERA_REQUEST_LEDGER_ENABLED:-false}
+      METERA_RISK_EVENT_LOGGING_ENABLED: ${METERA_RISK_EVENT_LOGGING_ENABLED:-false}
+      METERA_SHADOW_SAVINGS_LOGGING_ENABLED: ${METERA_SHADOW_SAVINGS_LOGGING_ENABLED:-false}
+      METERA_SCOPED_POLICY_ENABLED: ${METERA_SCOPED_POLICY_ENABLED:-false}
+      METERA_ROLLUPS_ENABLED: ${METERA_ROLLUPS_ENABLED:-false}
+      METERA_BILLING_PREP_ENABLED: ${METERA_BILLING_PREP_ENABLED:-false}
+      METERA_IDENTITY_GUARD_ENABLED: ${METERA_IDENTITY_GUARD_ENABLED:-false}
+      METERA_IDENTITY_STRICT_MODE_ENABLED: ${METERA_IDENTITY_STRICT_MODE_ENABLED:-false}
+      METERA_IDENTITY_PARTITIONING_ENABLED: ${METERA_IDENTITY_PARTITIONING_ENABLED:-false}
+      METERA_MULTIMODAL_HARD_ALIGNMENT_ENABLED: ${METERA_MULTIMODAL_HARD_ALIGNMENT_ENABLED:-false}
+      METERA_POLICY_TIMING_BREAKDOWN_ENABLED: ${METERA_POLICY_TIMING_BREAKDOWN_ENABLED:-false}
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/ready'); data=json.load(r); raise SystemExit(0 if r.status == 200 and data.get('status') == 'ready' else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+    depends_on:
+      redis:
+        condition: service_started
+      pgvector:
+        condition: service_healthy
+      mock-upstream:
+        condition: service_healthy
+
+  mock-upstream:
+    image: python:3.12-slim
+    container_name: metera-mock-upstream
+    working_dir: /mock
+    command: ["sh", "-c", "pip install --no-cache-dir fastapi uvicorn pydantic && python -m uvicorn scripts.mock_upstream:app --host 0.0.0.0 --port 8010"]
+    volumes:
+      - ./:/mock
+    ports:
+      - "8010:8010"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8010/health')); raise SystemExit(0 if data.get('status') == 'ok' else 1)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: metera-redis
+    ports:
+      - "6379:6379"
+
+  pgvector:
+    image: pgvector/pgvector:pg16
+    container_name: metera-pgvector
+    environment:
+      POSTGRES_DB: metera
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - metera-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d metera"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  metera-test:
+    build:
+      context: .
+    container_name: metera-test-runner
+    working_dir: /app
+    command: ["sh", "-c", "python -m pip install --no-cache-dir --upgrade 'pip>=25.3' 'setuptools>=78.1.1' wheel && python -m pip install --no-cache-dir '.[dev,semantic]' && tail -f /dev/null"]
+    environment:
+      PYTHONPATH: /app
+      METERA_POLICY_STORE_DSN: postgresql://postgres:postgres@pgvector:5432/metera
+      METERA_SEMANTIC_STORE_DSN: postgresql://postgres:postgres@pgvector:5432/metera
+    volumes:
+      - ./:/app
+    depends_on:
+      pgvector:
+        condition: service_healthy
+
+  metera-dashboard:
+    build:
+      context: .
+    container_name: metera-dashboard
+    working_dir: /app
+    command: ["sh", "-c", "python -m pip install --no-cache-dir --upgrade 'pip>=25.3' 'setuptools>=78.1.1' wheel && python -m pip install --no-cache-dir '.[ui]' && streamlit run dashboard/app.py --server.port=8501 --server.address=0.0.0.0"]
+    environment:
+      METERA_STATS_URL: http://metera-app:8000/stats/summary
+      METERA_HEALTH_URL: http://metera-app:8000/health
+      METERA_POLICY_STORE_DSN: postgresql://postgres:postgres@pgvector:5432/metera
+      METERA_SEMANTIC_MODEL_NAME: sentence-transformers/all-MiniLM-L6-v2
+    volumes:
+      - ./:/app
+    ports:
+      - "8501:8501"
+    depends_on:
+      metera:
+        condition: service_healthy
+      pgvector:
+        condition: service_healthy
+
+volumes:
+  metera-pgdata:

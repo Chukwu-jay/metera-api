@@ -1,0 +1,7 @@
+detectors:
+  - name: internal_session_token
+    pattern: '\bmetera_tok_[A-Za-z0-9]{24}\b'
+    flags: [IGNORECASE]
+  - name: internal_db_password
+    pattern: 'internal_pwd_[A-Za-z0-9]{12}'
+    replacement: '[REDACTED_INTERNAL_DB_PASSWORD]'

@@ -1,0 +1,24 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.git/
+.gitignore
+.env
+.env.*
+build/
+metera.egg-info/
+
+# Local/test artifacts not needed in image
+audit/
+dashboard/
+docker-compose.yml
+docker-compose.test.yml
+Makefile
+tests/
+docs/
+README_PRODUCTION.md
+multimodal_stress_test_*.json
+stress_test_report_*.json
+threshold_seed.py
+tmp_*.py
