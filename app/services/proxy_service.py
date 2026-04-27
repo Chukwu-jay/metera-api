@@ -247,7 +247,7 @@ class ProxyService:
         shadow_analysis_cutoff = datetime.now(UTC)
         upstream_response = await self.provider.create_chat_completion(
             request=request,
-            bearer_token=context.bearer_token,
+            bearer_token=self._resolve_upstream_bearer_token(context),
         )
         estimated_cost = _record_usage_and_cost(response=upstream_response, savings=False)
         upstream_response.metera = {
@@ -318,8 +318,13 @@ class ProxyService:
         increment("streaming_cache_bypasses")
         return await self.provider.create_chat_completion_stream(
             request=request,
-            bearer_token=context.bearer_token,
+            bearer_token=self._resolve_upstream_bearer_token(context),
         )
+
+    def _resolve_upstream_bearer_token(self, context: ProxyContext) -> str | None:
+        if getattr(self.settings, "controlplane_identity_enabled", False) and context.tenant_id:
+            return None
+        return context.bearer_token
 
     async def _enforce_billing_access(self, *, context: ProxyContext) -> None:
         if self.billing_repository is None or not context.tenant_id:

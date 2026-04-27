@@ -9,7 +9,11 @@ from app.storage.memory import InMemoryKVStore
 
 
 class FakeProvider:
+    def __init__(self) -> None:
+        self.last_bearer_token = None
+
     async def create_chat_completion(self, *, request, bearer_token=None):
+        self.last_bearer_token = bearer_token
         return ChatCompletionResponse(
             id="identity-1",
             model=request.model,
@@ -44,7 +48,7 @@ class FakeResolver:
         return None
 
 
-def _settings():
+def _settings(*, controlplane_identity_enabled: bool = False):
     return type(
         "S",
         (),
@@ -55,18 +59,21 @@ def _settings():
             "default_exact_ttl_seconds": 60,
             "semantic_enabled": False,
             "namespace_header": "x-metera-namespace",
+            "controlplane_identity_enabled": controlplane_identity_enabled,
         },
     )()
 
 
-def _install_identity_test_service() -> None:
+def _install_identity_test_service(*, controlplane_identity_enabled: bool = False) -> FakeProvider:
     exact_cache = ExactCache(InMemoryKVStore())
+    provider = FakeProvider()
     app.dependency_overrides[get_exact_cache] = lambda: exact_cache
-    app.dependency_overrides[get_proxy_service] = lambda: IdentityProxyService(settings=_settings(), exact_cache=exact_cache)
+    app.dependency_overrides[get_proxy_service] = lambda: IdentityProxyService(settings=_settings(controlplane_identity_enabled=controlplane_identity_enabled), provider=provider, exact_cache=exact_cache)
+    return provider
 
 
 def test_chat_route_preserves_legacy_behavior_when_identity_disabled() -> None:
-    _install_identity_test_service()
+    provider = _install_identity_test_service(controlplane_identity_enabled=False)
 
     client = TestClient(app)
     original_enabled = getattr(app.state, "controlplane_identity_enabled", False)
@@ -91,10 +98,11 @@ def test_chat_route_preserves_legacy_behavior_when_identity_disabled() -> None:
     body = response.json()
     assert body["metera"]["namespace"] == "tenant-a"
     assert body["metera"].get("tenant_id") is None
+    assert provider.last_bearer_token is None
 
 
 def test_chat_route_requires_valid_workspace_key_when_identity_enabled() -> None:
-    _install_identity_test_service()
+    _install_identity_test_service(controlplane_identity_enabled=True)
 
     client = TestClient(app)
     original_enabled = getattr(app.state, "controlplane_identity_enabled", False)
@@ -123,7 +131,7 @@ def test_chat_route_requires_valid_workspace_key_when_identity_enabled() -> None
 
 
 def test_chat_route_attaches_identity_metadata_when_enabled() -> None:
-    _install_identity_test_service()
+    provider = _install_identity_test_service(controlplane_identity_enabled=True)
 
     client = TestClient(app)
     original_enabled = getattr(app.state, "controlplane_identity_enabled", False)
@@ -152,3 +160,4 @@ def test_chat_route_attaches_identity_metadata_when_enabled() -> None:
     assert body["metera"]["tenant_id"] == "tenant_123"
     assert body["metera"]["workspace_id"] == "workspace_456"
     assert body["metera"]["api_key_id"] == "key_abc"
+    assert provider.last_bearer_token is None
