@@ -40,7 +40,7 @@ class OpenAICompatibleProvider:
                 async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
                     response = await client.post(
                         f"{self.base_url}/v1/chat/completions",
-                        json=request.model_dump(exclude_none=True),
+                        json=_build_upstream_payload(request),
                         headers=headers,
                     )
                 if response.status_code >= 500:
@@ -81,7 +81,7 @@ class OpenAICompatibleProvider:
             outbound = client.build_request(
                 "POST",
                 f"{self.base_url}/v1/chat/completions",
-                json=request.model_dump(exclude_none=True),
+                json=_build_upstream_payload(request),
                 headers=headers,
             )
             response = await client.send(outbound, stream=True)
@@ -128,6 +128,13 @@ class OpenAICompatibleProvider:
         if token:
             headers["authorization"] = f"Bearer {token}"
         return headers
+
+
+def _build_upstream_payload(request: ChatCompletionRequest) -> dict[str, Any]:
+    payload = request.model_dump(exclude_none=True)
+    if not payload.get("metadata"):
+        payload.pop("metadata", None)
+    return payload
 
 
 def _build_upstream_error_message(kind: str, response: httpx.Response, body_bytes: bytes | None = None) -> str:
