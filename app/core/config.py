@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     scoped_policy_enabled: bool = False
     rollups_enabled: bool = False
     billing_prep_enabled: bool = False
-    billing_patronage_threshold_usd: float = 0.04
+    billing_patronage_threshold_usd: float = 50.0
     identity_guard_enabled: bool = False
     identity_strict_mode_enabled: bool = False
     identity_partitioning_enabled: bool = False
