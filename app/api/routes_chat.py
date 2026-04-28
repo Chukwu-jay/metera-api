@@ -1,3 +1,4 @@
+import logging
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, status
@@ -10,6 +11,8 @@ from app.models.domain import ProxyContext
 from app.providers.errors import UpstreamProviderError
 from app.security.namespace import resolve_namespace
 from app.services.proxy_service import ProxyService
+
+logger = logging.getLogger("metera.chat")
 
 router = APIRouter(prefix="/v1", tags=["chat"])
 
@@ -70,6 +73,21 @@ async def chat_completions(
         }
         return response
     except UpstreamProviderError as exc:
+        logger.warning(
+            "upstream_provider_error",
+            extra={
+                "metera": {
+                    "path": "/v1/chat/completions",
+                    "namespace": context.namespace,
+                    "request_id": context.request_id,
+                    "tenant_id": context.tenant_id,
+                    "workspace_id": context.workspace_id,
+                    "status_code": exc.status_code,
+                    "retryable": exc.retryable,
+                    "message": exc.message,
+                }
+            },
+        )
         raise HTTPException(status_code=exc.status_code, detail={"message": exc.message, "retryable": exc.retryable}) from exc
 
 

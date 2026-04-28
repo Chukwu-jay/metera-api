@@ -5,6 +5,8 @@ from typing import Any
 
 import httpx
 
+MAX_ERROR_BODY_CHARS = 1000
+
 from app.models.api import ChatCompletionRequest, ChatCompletionResponse
 from app.providers.errors import UpstreamProviderError
 
@@ -43,13 +45,13 @@ class OpenAICompatibleProvider:
                     )
                 if response.status_code >= 500:
                     raise UpstreamProviderError(
-                        message=f"Upstream provider server error: {response.status_code}",
+                        message=_build_upstream_error_message("server", response),
                         status_code=502,
                         retryable=True,
                     )
                 if response.status_code >= 400:
                     raise UpstreamProviderError(
-                        message=f"Upstream provider request error: {response.status_code}",
+                        message=_build_upstream_error_message("request", response),
                         status_code=502,
                         retryable=False,
                     )
@@ -84,16 +86,18 @@ class OpenAICompatibleProvider:
             )
             response = await client.send(outbound, stream=True)
             if response.status_code >= 500:
+                error_body = await response.aread()
                 await response.aclose()
                 raise UpstreamProviderError(
-                    message=f"Upstream provider server error: {response.status_code}",
+                    message=_build_upstream_error_message("server", response, body_bytes=error_body),
                     status_code=502,
                     retryable=True,
                 )
             if response.status_code >= 400:
+                error_body = await response.aread()
                 await response.aclose()
                 raise UpstreamProviderError(
-                    message=f"Upstream provider request error: {response.status_code}",
+                    message=_build_upstream_error_message("request", response, body_bytes=error_body),
                     status_code=502,
                     retryable=False,
                 )
@@ -124,3 +128,22 @@ class OpenAICompatibleProvider:
         if token:
             headers["authorization"] = f"Bearer {token}"
         return headers
+
+
+def _build_upstream_error_message(kind: str, response: httpx.Response, body_bytes: bytes | None = None) -> str:
+    body_text = _extract_error_body_text(response, body_bytes=body_bytes)
+    suffix = f" body={body_text}" if body_text else ""
+    return f"Upstream provider {kind} error: {response.status_code}{suffix}"
+
+
+def _extract_error_body_text(response: httpx.Response, body_bytes: bytes | None = None) -> str:
+    raw = body_bytes if body_bytes is not None else response.content
+    if not raw:
+        return ""
+    try:
+        text = raw.decode(response.encoding or "utf-8", errors="replace").strip()
+    except Exception:
+        text = raw.decode("utf-8", errors="replace").strip()
+    if len(text) > MAX_ERROR_BODY_CHARS:
+        text = text[:MAX_ERROR_BODY_CHARS] + "..."
+    return text
