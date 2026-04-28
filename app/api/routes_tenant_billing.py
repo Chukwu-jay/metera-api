@@ -58,6 +58,11 @@ async def tenant_billing_overview(request: Request, tenant_id: str | None = None
     )
 
     periods = await repository.list_billing_periods(tenant_id=scope.tenant_id)
+    if not periods and active_subscription_row is not None:
+        # Subscription truth is stronger than a potentially stale/misaligned tenant filter.
+        # Fall back to the active subscription path so tenant overview can still resolve the
+        # current commercial period during H2 proof execution.
+        periods = await repository.list_billing_periods(subscription_id=active_subscription_row["id"])
     current_period_row = next((row for row in periods if str(row.get("status")) in {"open", "closing"}), None)
     if current_period_row is None and periods:
         current_period_row = periods[0]

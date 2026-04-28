@@ -386,6 +386,30 @@ async def list_usage_charges(request: Request, tenant_id: str | None = None, lim
     ]
 
 
+@router.get("/control/billing/reports", response_model=list[BillingReportSummary])
+async def list_billing_reports(
+    request: Request,
+    tenant_id: str | None = None,
+    subscription_id: str | None = None,
+    status_filter: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    format: str = "json",
+) -> list[BillingReportSummary]:
+    repository = _require_billing_repository(request)
+    periods = await repository.list_billing_periods(tenant_id=tenant_id, subscription_id=subscription_id)
+    if status_filter is not None:
+        periods = [period for period in periods if str(period.get("status")) == status_filter]
+    safe_limit = max(1, limit)
+    safe_offset = max(0, offset)
+    page_periods = periods[safe_offset : safe_offset + safe_limit]
+    reports: list[BillingReportSummary] = []
+    for period in page_periods:
+        report = await repository.generate_billing_report(billing_period_id=period["id"], export_format=format)
+        reports.append(BillingReportSummary(**report))
+    return reports
+
+
 @router.post("/control/billing/materialize/rollups", response_model=UsageChargeMaterializationResponse)
 async def materialize_usage_charges_from_rollups(payload: UsageChargeMaterializationRequest, request: Request) -> UsageChargeMaterializationResponse:
     repository = _require_billing_repository(request)
@@ -418,6 +442,20 @@ async def materialize_usage_charges_from_ledger(payload: UsageChargeMaterializat
         status_code = status.HTTP_404_NOT_FOUND if "not found" in detail else status.HTTP_400_BAD_REQUEST
         raise HTTPException(status_code=status_code, detail=detail) from exc
     return UsageChargeMaterializationResponse(created_count=created_count)
+
+
+@router.post("/control/billing/usage-charges/materialize", response_model=UsageChargeMaterializationResponse)
+async def materialize_usage_charges(
+    payload: UsageChargeMaterializationRequest,
+    request: Request,
+    source: str = "ledger",
+) -> UsageChargeMaterializationResponse:
+    normalized_source = source.strip().lower()
+    if normalized_source == "ledger":
+        return await materialize_usage_charges_from_ledger(payload, request)
+    if normalized_source == "rollups":
+        return await materialize_usage_charges_from_rollups(payload, request)
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="source must be 'ledger' or 'rollups'")
 
 
 @router.get("/control/billing/commercial-events", response_model=list[CommercialEventSummary])
