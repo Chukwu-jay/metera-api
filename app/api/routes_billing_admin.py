@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.core.app_services import get_app_services
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.dependencies import require_admin
 from app.models.api import (
     BillingAdjustmentCreateRequest,
@@ -28,7 +28,13 @@ from app.models.api import (
 
 router = APIRouter(prefix="/admin", tags=["admin-billing"], dependencies=[Depends(require_admin)])
 
-PATRONAGE_REQUIRED_THRESHOLD_USD = 50.0
+
+def _runtime_settings(request: Request) -> Settings:
+    return getattr(request.app.state, "runtime_settings", None) or get_settings()
+
+
+def _patronage_required_threshold_usd(request: Request) -> float:
+    return float(getattr(_runtime_settings(request), "billing_patronage_threshold_usd", 50.0) or 50.0)
 
 
 def _require_billing_repository(request: Request):
@@ -74,7 +80,7 @@ async def _emit_commercial_event(
 
 
 async def _emit_patronage_required_event(request: Request, row: dict) -> None:
-    if float(row.get("realized_savings_usd_total", 0.0) or 0.0) < PATRONAGE_REQUIRED_THRESHOLD_USD:
+    if float(row.get("realized_savings_usd_total", 0.0) or 0.0) < _patronage_required_threshold_usd(request):
         return
     await _emit_commercial_event(
         request,

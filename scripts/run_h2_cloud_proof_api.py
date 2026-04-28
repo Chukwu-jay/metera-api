@@ -1,0 +1,364 @@
+from __future__ import annotations
+
+import json
+import math
+import os
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import UTC, datetime
+from pathlib import Path
+
+BASE_URL = os.getenv("METERA_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+ADMIN_KEY = os.getenv("METERA_ADMIN_API_KEY", "dev-admin-key")
+RUN_TAG = os.getenv("METERA_PROOF_RUN_TAG") or datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+OUTPUT_PATH = os.getenv("METERA_PROOF_OUTPUT_PATH")
+TARGET_PROMPTS = int(os.getenv("METERA_PROOF_TARGET_PROMPTS", "20"))
+MODEL = os.getenv("METERA_PROOF_MODEL", "gpt-4o")
+MESSAGE_BLOCK_REPEATS = int(os.getenv("METERA_PROOF_MESSAGE_BLOCK_REPEATS", "3000"))
+MESSAGE_COUNT = int(os.getenv("METERA_PROOF_MESSAGE_COUNT", "5"))
+PROOF_THRESHOLD_USD = float(os.getenv("METERA_BILLING_PATRONAGE_THRESHOLD_USD", "50.0"))
+TENANT_SLUG = os.getenv("METERA_PROOF_TENANT_SLUG", f"h2-api-proof-{RUN_TAG}")
+WORKSPACE_SLUG = os.getenv("METERA_PROOF_WORKSPACE_SLUG", f"h2-api-proof-ws-{RUN_TAG}")
+TENANT_NAME = os.getenv("METERA_PROOF_TENANT_NAME", TENANT_SLUG.replace("-", " ").title())
+WORKSPACE_NAME = os.getenv("METERA_PROOF_WORKSPACE_NAME", WORKSPACE_SLUG.replace("-", " ").title())
+PLAN_CODE = os.getenv("METERA_PROOF_PLAN_CODE", f"h2_api_proof_plan_{RUN_TAG}")
+NAMESPACE = os.getenv("METERA_PROOF_NAMESPACE", f"{TENANT_SLUG}-{WORKSPACE_SLUG}")
+PERIOD_START = os.getenv("METERA_PROOF_PERIOD_START", "2026-04-01T00:00:00+00:00")
+PERIOD_END = os.getenv("METERA_PROOF_PERIOD_END", "2026-05-01T00:00:00+00:00")
+PAUSE_SECONDS = float(os.getenv("METERA_PROOF_PAUSE_SECONDS", "0.0"))
+
+
+def main() -> int:
+    ready = _get_json(f"{BASE_URL}/ready")
+    identity = _bootstrap_identity()
+    plan, subscription, billing_period = _ensure_billing_setup(tenant_id=identity["tenant_id"])
+
+    responses = _drive_cached_traffic(identity["plaintext_api_key"])
+    materialized = _post_json(
+        f"{BASE_URL}/admin/control/billing/usage-charges/materialize?source=ledger",
+        {
+            "tenant_id": identity["tenant_id"],
+            "subscription_id": subscription["id"],
+            "billing_period_id": billing_period["id"],
+            "rollup_date": None,
+            "limit": 2000,
+        },
+        headers=_admin_headers(),
+    )
+    summarized = _post_json(
+        f"{BASE_URL}/admin/control/billing/periods/{billing_period['id']}/summarize",
+        {},
+        headers=_admin_headers(),
+    )
+    reconciliation = _get_json(
+        f"{BASE_URL}/admin/control/billing/periods/{billing_period['id']}/reconcile",
+        headers=_admin_headers(),
+    )
+    closeout_preview = _get_json(
+        f"{BASE_URL}/admin/control/billing/periods/{billing_period['id']}/closeout-preview",
+        headers=_admin_headers(),
+    )
+    report = _get_json(
+        f"{BASE_URL}/admin/control/billing/periods/{billing_period['id']}/report?format=json",
+        headers=_admin_headers(),
+    )
+    tenant_scope = _get_json(
+        f"{BASE_URL}/control/tenant/billing/scope",
+        headers=_tenant_headers(identity["plaintext_api_key"]),
+    )
+    tenant_overview = _get_json(
+        f"{BASE_URL}/control/tenant/billing/overview",
+        headers=_tenant_headers(identity["plaintext_api_key"]),
+    )
+
+    closing_probe = _post_json_allow_error(
+        f"{BASE_URL}/v1/chat/completions",
+        _chat_request_payload(),
+        headers=_tenant_headers(identity["plaintext_api_key"]),
+    )
+
+    closed = None
+    closed_probe = None
+    commercial_events_before_close = _get_json(
+        f"{BASE_URL}/admin/control/billing/commercial-events?tenant_id={urllib.parse.quote(identity['tenant_id'])}&limit=20",
+        headers=_admin_headers(),
+    )
+    commercial_events_after_close = []
+    if summarized.get("status") == "closing":
+        closed = _post_json(
+            f"{BASE_URL}/admin/control/billing/periods/{billing_period['id']}/close",
+            {},
+            headers=_admin_headers(),
+        )
+        commercial_events_after_close = _get_json(
+            f"{BASE_URL}/admin/control/billing/commercial-events?tenant_id={urllib.parse.quote(identity['tenant_id'])}&limit=20",
+            headers=_admin_headers(),
+        )
+        closed_probe = _post_json_allow_error(
+            f"{BASE_URL}/v1/chat/completions",
+            _chat_request_payload(),
+            headers=_tenant_headers(identity["plaintext_api_key"]),
+        )
+
+    prompt_count = len(responses)
+    exact_hits = sum(1 for row in responses if row.get("cache") == "exact_hit")
+    misses = sum(1 for row in responses if row.get("cache") == "miss")
+    total_saved = sum(float(row.get("estimated_savings_usd", 0.0) or 0.0) for row in responses)
+    total_spend = sum(float(row.get("estimated_cost_usd", 0.0) or 0.0) for row in responses if row.get("cache") == "miss")
+    uncached_baseline_cost = total_saved + total_spend
+    avoided_cost_percent = ((total_saved / uncached_baseline_cost) * 100.0) if uncached_baseline_cost > 0 else 0.0
+    cache_hit_rate_percent = ((exact_hits / prompt_count) * 100.0) if prompt_count else 0.0
+
+    bundle = {
+        "proof_run": {
+            "run_tag": RUN_TAG,
+            "base_url": BASE_URL,
+            "generated_at_utc": datetime.now(UTC).isoformat(),
+            "namespace": NAMESPACE,
+            "ready": ready,
+            "configured_threshold_usd": PROOF_THRESHOLD_USD,
+        },
+        "identity": {
+            "tenant": identity["tenant"],
+            "workspace": identity["workspace"],
+            "api_key": {
+                "id": identity["api_key"]["id"],
+                "key_prefix": identity["api_key"]["key_prefix"],
+                "display_name": identity["api_key"]["display_name"],
+                "tenant_role": identity["api_key"]["tenant_role"],
+                "tenant_capabilities": identity["api_key"]["tenant_capabilities"],
+            },
+        },
+        "billing": {
+            "plan": plan,
+            "subscription": subscription,
+            "billing_period": billing_period,
+            "materialized": materialized,
+            "summarized": summarized,
+            "reconciliation": reconciliation,
+            "closeout_preview": closeout_preview,
+            "closed": closed,
+            "report": report,
+        },
+        "tenant_views": {
+            "scope": tenant_scope,
+            "overview": tenant_overview,
+        },
+        "traffic": {
+            "prompt_count": prompt_count,
+            "exact_hits": exact_hits,
+            "misses": misses,
+            "cache_hit_rate_percent": round(cache_hit_rate_percent, 2),
+            "avoided_cost_percent": round(avoided_cost_percent, 2),
+            "uncached_baseline_cost_usd": round(uncached_baseline_cost, 6),
+            "actual_upstream_spend_usd": round(total_spend, 6),
+            "realized_savings_usd": round(total_saved, 6),
+            "responses": responses,
+        },
+        "commercial_events": {
+            "before_close": commercial_events_before_close,
+            "after_close": commercial_events_after_close,
+        },
+        "enforcement": {
+            "closing_probe": closing_probe,
+            "closed_probe": closed_probe,
+        },
+    }
+
+    rendered = json.dumps(bundle, indent=2)
+    print(rendered)
+    print()
+    print(_markdown_summary(bundle))
+
+    if OUTPUT_PATH:
+        output_path = Path(OUTPUT_PATH)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(rendered + "\n", encoding="utf-8")
+
+    pass_fail = _evaluate_pass_fail(bundle)
+    return 0 if pass_fail["passed"] else 1
+
+
+def _bootstrap_identity() -> dict:
+    payload = {
+        "tenant": {"slug": TENANT_SLUG, "name": TENANT_NAME, "metadata": {"seeded_by": "run_h2_cloud_proof_api", "run_tag": RUN_TAG}},
+        "workspace": {"slug": WORKSPACE_SLUG, "name": WORKSPACE_NAME, "metadata": {"seeded_by": "run_h2_cloud_proof_api", "run_tag": RUN_TAG}},
+        "api_key": {
+            "display_name": "H2 Cloud Proof API Key",
+            "tenant_role": "tenant_admin",
+            "tenant_capabilities": ["billing:read", "billing:history:read", "billing:adjustments:read", "billing:scope:read"],
+            "metadata": {"seeded_by": "run_h2_cloud_proof_api", "run_tag": RUN_TAG},
+        },
+    }
+    response = _post_json(f"{BASE_URL}/admin/control/bootstrap/tenant-environment", payload, headers=_admin_headers())
+    return {
+        "tenant_id": response["tenant"]["id"],
+        "workspace_id": response["workspace"]["id"],
+        "api_key_id": response["api_key"]["id"],
+        "plaintext_api_key": response["api_key"]["plaintext_api_key"],
+        "tenant": response["tenant"],
+        "workspace": response["workspace"],
+        "api_key": response["api_key"],
+    }
+
+
+def _ensure_billing_setup(*, tenant_id: str) -> tuple[dict, dict, dict]:
+    plan = _post_json(
+        f"{BASE_URL}/admin/control/billing/plans",
+        {
+            "code": PLAN_CODE,
+            "name": "H2 API Proof Plan",
+            "monthly_base_price_usd": 50.0,
+            "soft_cap_threshold_ratio": 0.8,
+            "hard_cap_enabled": False,
+            "metadata": {"scenario": "H2_API_Proof", "proof": "run_h2_cloud_proof_api"},
+        },
+        headers=_admin_headers(),
+    )
+    subscription = _post_json(
+        f"{BASE_URL}/admin/control/billing/subscriptions",
+        {
+            "tenant_id": tenant_id,
+            "plan_id": plan["id"],
+            "status": "trialing",
+            "current_period_start": PERIOD_START,
+            "current_period_end": PERIOD_END,
+            "trial_ends_at": None,
+        },
+        headers=_admin_headers(),
+    )
+    billing_period = _post_json(
+        f"{BASE_URL}/admin/control/billing/periods",
+        {
+            "tenant_id": tenant_id,
+            "subscription_id": subscription["id"],
+            "period_start": PERIOD_START,
+            "period_end": PERIOD_END,
+        },
+        headers=_admin_headers(),
+    )
+    return plan, subscription, billing_period
+
+
+def _chat_request_payload() -> dict:
+    chunk = "BLOCK " * MESSAGE_BLOCK_REPEATS
+    messages = [{"role": "system", "content": "Reply with exactly PERCENT_OK"}]
+    for _ in range(MESSAGE_COUNT):
+        messages.append({"role": "user", "content": chunk})
+    return {"model": MODEL, "messages": messages, "temperature": 0}
+
+
+def _drive_cached_traffic(plaintext_api_key: str) -> list[dict]:
+    payload = _chat_request_payload()
+    responses: list[dict] = []
+    for _ in range(TARGET_PROMPTS):
+        row = _post_json(f"{BASE_URL}/v1/chat/completions", payload, headers=_tenant_headers(plaintext_api_key))
+        responses.append(
+            {
+                "cache": ((row.get("metera") or {}).get("cache")),
+                "estimated_cost_usd": float(((row.get("metera") or {}).get("estimated_cost_usd", 0.0) or 0.0)),
+                "estimated_savings_usd": float(((row.get("metera") or {}).get("estimated_savings_usd", 0.0) or 0.0)),
+                "content": (((row.get("choices") or [{}])[0].get("message") or {}).get("content")),
+            }
+        )
+        if PAUSE_SECONDS > 0:
+            time.sleep(PAUSE_SECONDS)
+    return responses
+
+
+def _evaluate_pass_fail(bundle: dict) -> dict:
+    summarized = bundle["billing"]["summarized"]
+    closing_probe = bundle["enforcement"]["closing_probe"] or {}
+    closed_probe = bundle["enforcement"]["closed_probe"] or {}
+    checks = {
+        "ready_status": bundle["proof_run"]["ready"].get("status") == "ready",
+        "tenant_scope_authenticated": bundle["tenant_views"]["scope"].get("source") == "proxy_context",
+        "billing_period_visible": bool(((bundle["tenant_views"]["overview"] or {}).get("current_billing_period") or {}).get("id")),
+        "materialization_happened": int((bundle["billing"]["materialized"] or {}).get("created_count", 0)) > 0,
+        "report_reconciles": bool((bundle["billing"]["reconciliation"] or {}).get("matches_realized_savings")),
+        "avoided_cost_positive": float((bundle["traffic"] or {}).get("avoided_cost_percent", 0.0) or 0.0) > 0.0,
+        "closing_402_optional": int(closing_probe.get("status_code", 0) or 0) in {0, 402},
+        "closed_402_optional": int(closed_probe.get("status_code", 0) or 0) in {0, 402},
+    }
+    if summarized.get("status") == "closing":
+        checks["closing_402"] = int(closing_probe.get("status_code", 0) or 0) == 402
+    if summarized.get("status") == "closed":
+        checks["closed_402"] = int(closed_probe.get("status_code", 0) or 0) == 402
+    failed = [name for name, passed in checks.items() if not passed]
+    return {"passed": not failed, "checks": checks, "failed_checks": failed}
+
+
+def _markdown_summary(bundle: dict) -> str:
+    traffic = bundle["traffic"]
+    summarized = bundle["billing"]["summarized"]
+    report = bundle["billing"]["report"]
+    lines = [
+        "# H2 Cloud Proof API Summary",
+        "",
+        f"- Base URL: `{bundle['proof_run']['base_url']}`",
+        f"- Run Tag: `{bundle['proof_run']['run_tag']}`",
+        f"- Threshold USD: `{bundle['proof_run']['configured_threshold_usd']}`",
+        f"- Prompts: `{traffic['prompt_count']}`",
+        f"- Exact hits: `{traffic['exact_hits']}`",
+        f"- Misses: `{traffic['misses']}`",
+        f"- Cache hit rate: `{traffic['cache_hit_rate_percent']:.2f}%`",
+        f"- Avoided cost percent: `{traffic['avoided_cost_percent']:.2f}%`",
+        f"- Tokens saved: `{int(summarized.get('total_tokens_saved', 0) or 0):,}`",
+        f"- Realized savings USD: `${float(summarized.get('realized_savings_usd_total', 0.0) or 0.0):.6f}`",
+        f"- Upstream spend USD: `${float(summarized.get('upstream_cost_usd_total', 0.0) or 0.0):.6f}`",
+        f"- Repo savings ratio: `{float(report.get('realized_savings_ratio', 0.0) or 0.0) * 100.0:.2f}%`",
+        f"- Billing period status: `{summarized.get('status')}`",
+    ]
+    return "\n".join(lines)
+
+
+def _admin_headers() -> dict[str, str]:
+    return {"x-metera-admin-key": ADMIN_KEY, "content-type": "application/json"}
+
+
+def _tenant_headers(plaintext_api_key: str) -> dict[str, str]:
+    return {
+        "authorization": f"Bearer {plaintext_api_key}",
+        "x-metera-namespace": NAMESPACE,
+        "content-type": "application/json",
+    }
+
+
+def _get_json(url: str, headers: dict[str, str] | None = None) -> dict | list:
+    request = urllib.request.Request(url, headers=headers or {}, method="GET")
+    with urllib.request.urlopen(request) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _post_json(url: str, payload: dict, headers: dict[str, str] | None = None) -> dict:
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers or {"content-type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request) as response:
+        body = response.read().decode("utf-8")
+        return json.loads(body) if body else {}
+
+
+def _post_json_allow_error(url: str, payload: dict, headers: dict[str, str] | None = None) -> dict:
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers or {"content-type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request) as response:
+            body = response.read().decode("utf-8")
+            return {"ok": True, "status_code": response.status, "body": json.loads(body) if body else {}}
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8")
+        return {"ok": False, "status_code": exc.code, "body": json.loads(body) if body else {}}
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -8,7 +8,9 @@ from uuid import uuid4
 from app.core.db import create_asyncpg_pool
 
 
-PATRONAGE_REQUIRED_THRESHOLD_USD = 50.0
+def _normalize_patronage_threshold_usd(value: float) -> float:
+    normalized = float(value or 0.0)
+    return normalized if normalized > 0.0 else 50.0
 
 
 def _format_usd_human(amount: float) -> str:
@@ -22,8 +24,9 @@ def _format_usd_human(amount: float) -> str:
 
 
 class PostgresBillingRepository:
-    def __init__(self, dsn: str) -> None:
+    def __init__(self, dsn: str, *, patronage_required_threshold_usd: float = 50.0) -> None:
         self.dsn = dsn
+        self.patronage_required_threshold_usd = _normalize_patronage_threshold_usd(patronage_required_threshold_usd)
         self._pool = None
         self._schema_ready = False
 
@@ -317,7 +320,7 @@ class PostgresBillingRepository:
             int(totals["total_tokens_saved"] or 0),
         )
         refreshed = dict(await pool.fetchrow("SELECT * FROM billing_periods WHERE id = $1 LIMIT 1", billing_period_id))
-        if refreshed["status"] == "open" and float(refreshed["realized_savings_usd_total"] or 0.0) >= PATRONAGE_REQUIRED_THRESHOLD_USD:
+        if refreshed["status"] == "open" and float(refreshed["realized_savings_usd_total"] or 0.0) >= self.patronage_required_threshold_usd:
             refreshed = await self.update_billing_period_status(billing_period_id=billing_period_id, status="closing")
         return refreshed
 
@@ -873,7 +876,7 @@ class PostgresBillingRepository:
         subscription_status = str(subscription_dict.get("status")) if subscription_dict is not None else None
         period_status = str(period_dict.get("status")) if period_dict is not None else None
         is_paid_subscription = subscription_status == "active"
-        threshold_reached = float(period_dict.get("realized_savings_usd_total", 0.0) or 0.0) >= PATRONAGE_REQUIRED_THRESHOLD_USD if period_dict else False
+        threshold_reached = float(period_dict.get("realized_savings_usd_total", 0.0) or 0.0) >= self.patronage_required_threshold_usd if period_dict else False
         blocked = bool(period_dict and threshold_reached and period_status in {"closing", "closed"} and not is_paid_subscription)
         if not blocked:
             reason = None
@@ -885,7 +888,7 @@ class PostgresBillingRepository:
             "tenant_id": tenant_id,
             "blocked": blocked,
             "reason": reason,
-            "threshold_usd": PATRONAGE_REQUIRED_THRESHOLD_USD,
+            "threshold_usd": self.patronage_required_threshold_usd,
             "subscription_id": subscription_dict.get("id") if subscription_dict else None,
             "subscription_status": subscription_status,
             "billing_period_id": period_dict.get("id") if period_dict else None,

@@ -1,217 +1,149 @@
-# H2 Session Handoff — 2026-04-27
+# H2 Session Handoff — 2026-04-27 (late update)
 
 ## Purpose
-This note is for the next agent taking over H2 implementation work on Metera.
+This note is for the next engineer or agent taking over H2 implementation work on Metera.
 The goal is to resume with minimal friction and continue execution rather than re-planning.
 
 ## Current H2 objective
-H2 is defined as:
-- proving that the repaired local Pilot truth survives in a cloud deployment
+H2 is:
+- proving that the repaired local Pilot truth survives in the Railway deployment
 - with retained evidence
-- without relying on hidden DB rituals for identity bootstrap where avoidable
+- while fixing the first real billing/control-plane failures instead of relitigating infrastructure
 
-The immediate execution target is the H2 cloud proof path, with Railway as the practical first hosted target.
+## What was completed in this cloud session
 
-## What was completed in this session
+### 1. Repo + deployment substrate
+- isolated `workspace/metera` into its own Git repo
+- pushed it to: `https://github.com/Chukwu-jay/metera-api.git`
+- Railway deployment is live at:
+  - `https://metera-api-production.up.railway.app`
 
-### 1. Added H2 roadmap + linked it from the hardening plan
-Created:
-- `docs/H2_CLOUD_DEPLOYMENT_ROADMAP.md`
+### 2. Cloud posture is now real
+Verified live:
+- `/ready` returns success
+- Redis active
+- pgvector active
+- repository identity active
+- admin bootstrap works
+- tenant scope resolution works
 
-Updated:
-- `docs/PHASE_2_HARDENING_PLAN.md`
+### 3. Real blockers found and fixed in code
+These were discovered by probing the live deployment, not by replanning.
 
-Intent:
-- define H2 as cloud proof, not full production polish
-- clarify what H3/H4/H5 work can proceed in parallel with H2
+#### Fixed: admin auth/header mismatch
+Cloud admin flows needed to accept both:
+- `x-metera-admin-key`
+- `Authorization: Bearer ...`
 
-### 2. Confirmed current repo already has key H2 foundations
-Observed in repo:
-- `railway.json` exists and uses `/ready` as Railway healthcheck path
-- `.env.railway.beta.example` exists
-- `/health` and `/ready` already exist
-- identity admin routes already expose:
-  - create tenant
-  - create workspace
-  - issue API key
-  - bootstrap tenant environment
+#### Fixed: tenant identity key forwarded upstream
+Repository identity tenant bearer tokens were being forwarded to OpenAI instead of using `METERA_UPSTREAM_API_KEY`.
 
-Important implication:
-Older docs/gap analysis were partially stale relative to current repo state.
-The repo had more H2 bootstrap capability than the docs implied.
+#### Fixed: response model too strict for modern OpenAI payloads
+Nested models rejected valid fields like:
+- `refusal`
+- `annotations`
+- `logprobs`
+- token detail fields
 
-### 3. Expanded identity admin route coverage
-Updated:
-- `tests/test_admin_identity_routes.py`
+#### Fixed: opaque upstream failures
+Provider error handling and chat route logging were patched so the real upstream failure could be seen in logs.
 
-Added test coverage for:
-- create tenant
-- create workspace
-- issue API key
-- bootstrap tenant environment
-- revoke API key
+#### Fixed: empty metadata forwarded upstream
+Metera was forwarding default `metadata: {}` to OpenAI, and OpenAI rejected it unless `store` was enabled.
+The provider now omits empty/default metadata from upstream chat requests.
 
-Validated with:
-```bash
-python -m pytest tests/test_admin_identity_routes.py tests/test_health_route.py -q
-```
+### 4. Upstream verification
+Direct OpenAI verification showed:
+- old upstream key was bad
+- new upstream key worked directly
+- cloud 502s after that were therefore real Metera-side bugs, which were then fixed as above
 
-Observed result:
-- passed
+### 5. Live request path is now working
+Confirmed live:
+- authenticated tenant chat completion succeeds through Metera
+- metera attribution fields appear in the response
+- request/cost metrics move in `stats/summary`
 
-### 4. Changed the canonical proof flow away from SQL-first identity seeding
-Updated:
-- `scripts/pilot_proof_v1.py`
+Example successful probe result:
+- request content: `Reply with exactly: H2_MANUAL_PROBE_OK`
+- upstream response content: `H2_MANUAL_PROBE_OK`
 
-Key change:
-- identity bootstrap now defaults to API bootstrap mode
-- legacy SQL identity mode is still available through:
-  - `METERA_PROOF_IDENTITY_BOOTSTRAP_MODE=sql`
+### 6. Billing control-plane progress
+Confirmed live:
+- plan creation works
+- subscription creation works
+- billing period creation works
+- admin billing period listing works
 
-Intent:
-- stop treating DB identity seeding as the default proof posture
-- make the proof path closer to the actual operator/admin API surface
+## Current blocking issue
+The current H2 blocker is no longer infra, upstream integration, route-surface mismatch, or tenant read-model incoherence.
+It is now **repeatable API-first commercial enforcement proof**.
 
-### 5. Added a dedicated H2 cloud proof harness
-Created:
-- `scripts/run_h2_cloud_proof.py`
+### Concrete current state
+1. tenant billing overview/read-model mismatch is fixed live
+2. expected proof-path admin billing endpoints are fixed live
+3. API-first proof can now measure prompts, cache hits, saved tokens, avoided-cost %, and repo-native savings ratio in cloud
+4. final `402` enforcement proof still needs a controlled non-production threshold posture instead of giant provider-expensive traffic floods
 
-This is now the main implementation artifact from this session.
+## Current interpretation
+The next engineer should assume:
+- cloud substrate works
+- identity/bootstrap works
+- tenant traffic works
+- OpenAI path works
+- billing admin route surface works
+- tenant overview/read-model works
+- the current job is to harden the API-first proof path and complete final enforcement evidence cleanly
 
-What it does:
-- waits for `/ready`
-- bootstraps tenant/workspace/API key via admin API
-- seeds a threshold-crossing ledger scenario
-- creates plan, subscription, billing period
-- materializes charges from ledger
-- summarizes and reconciles the billing period
-- captures tenant billing scope + overview
-- probes `/v1/chat/completions` for:
-  - `402 patronage_required` in `closing`
-  - `402 service_suspended` after `closed`
-- emits a single JSON evidence bundle
-- optionally writes the bundle via `METERA_PROOF_OUTPUT_PATH`
+## Important live IDs from the session
+These are useful for continuity during takeover.
 
-### 6. Documented the new H2 runner
-Updated:
-- `README_PRODUCTION.md`
+### Probe tenant
+- `tenant_id = tenant_625fd7ed82c2452a87b72cae2b6653d6`
+- `tenant_slug = h2-probe-tenant-c`
 
-Added a section describing:
-- `scripts/run_h2_cloud_proof.py`
-- what it verifies
-- current truth that threshold scenario seeding still depends on DSN access
+### Probe workspace
+- `workspace_id = ws_ecd274ce87744afaaabbb74e275c0f72`
+- `workspace_slug = h2-probe-workspace-c`
+- recommended namespace:
+  - `h2-probe-tenant-c-h2-probe-workspace-c`
 
-## Important current truth / design stance
-The H2 proof path is now:
-- API-first for identity bootstrap and verification
-- still DSN-assisted for threshold-crossing scenario seeding
+### Probe API key
+- `api_key_id = mk_892544bd01644c48b22ef72aecc79243`
+- key prefix:
+  - `mk_live_muX18axj`
 
-That is intentional and honest.
-We do **not** yet have a proper product-surface-only high-volume proof traffic generator.
-Using the DSN for ledger seeding keeps H2 moving without pretending the product is further along than it is.
+### Probe plan
+- `plan_id = plan_740b273eafee4e6e92f938bc4e684864`
+- `code = h2_manual_probe_plan`
 
-## Validation done this session
+### Probe subscription
+- `subscription_id = subscription_b9aed986c94c4ce8979be2cb8944297c`
 
-### Passed
-```bash
-python -m pytest tests/test_admin_identity_routes.py tests/test_health_route.py -q
-python -m py_compile scripts/run_h2_cloud_proof.py scripts/pilot_proof_v1.py
-```
-
-### Not fully run
-The new H2 proof harness has **not yet been executed end-to-end** against a real deployment in this session.
-That is the immediate next step.
-
-## Local environment caveat encountered
-When attempting broader pytest execution, there was a local environment issue:
-- `ModuleNotFoundError: prometheus_client`
-
-This appears to be a local package/environment mismatch rather than a repo declaration problem, because:
-- `prometheus-client` is already present in `pyproject.toml`
-
-Do not over-interpret this as an H2 app logic issue without confirming the local Python environment first.
-
-## Files changed this session
-- `docs/H2_CLOUD_DEPLOYMENT_ROADMAP.md`
-- `docs/PHASE_2_HARDENING_PLAN.md`
-- `tests/test_admin_identity_routes.py`
-- `scripts/pilot_proof_v1.py`
-- `scripts/run_h2_cloud_proof.py`
-- `README_PRODUCTION.md`
+### Probe billing period
+- `billing_period_id = billing_period_001af7ef5d6749eb9a6069a67617be7d`
 
 ## Most important next step
-Run the H2 proof harness against the real target environment.
-
-### Expected command shape (PowerShell)
-```powershell
-$env:METERA_BASE_URL = "https://YOUR_DOMAIN"
-$env:METERA_ADMIN_API_KEY = "YOUR_ADMIN_KEY"
-$env:METERA_POLICY_STORE_DSN = "postgresql://..."
-$env:METERA_PROOF_OUTPUT_PATH = ".\artifacts\h2_cloud_proof.json"
-python scripts/run_h2_cloud_proof.py
-```
-
-If the deployment uses `METERA_SEMANTIC_STORE_DSN` instead of `METERA_POLICY_STORE_DSN`, that should also work because the script checks either.
-
-## What to do when the runner fails
-Do not broadly refactor first.
-Take the first failure and classify it.
-
-### Failure categories
-1. **Deployment posture failure**
-   - `/ready` never becomes ready
-   - backend fallback active
-   - env vars wrong
-   - identity repository unavailable
-
-2. **Bootstrap/control-plane failure**
-   - tenant/workspace/API key bootstrap route fails
-   - admin auth issue
-   - identity resolver/repository miswired
-
-3. **Billing proof failure**
-   - summarize doesn’t move period to `closing`
-   - reconciliation mismatch
-   - closeout preview wrong
-   - commercial events missing
-
-4. **Tenant enforcement failure**
-   - tenant API key doesn’t authenticate into tenant scope
-   - `/control/tenant/billing/scope` not resolved from proxy context
-   - `402` reason mismatch
-   - blocked behavior not switching from `patronage_required` to `service_suspended`
-
-5. **Harness bug**
-   - wrong assumptions in the new script
-   - ordering issue in seeding/materialization/probing
-   - mismatch between current repo semantics and harness expectations
+Inspect the implemented billing admin route surface in code and compare it to the assumed H2/manual-proof route paths.
+Do not start by questioning Railway or OpenAI again.
 
 ## Recommended next-agent workflow
 1. Read this handoff note.
 2. Read:
+   - `docs/CURRENT_STATE.md`
    - `docs/H2_CLOUD_DEPLOYMENT_ROADMAP.md`
-   - `scripts/run_h2_cloud_proof.py`
-   - `scripts/pilot_proof_v1.py`
-3. Confirm current Railway/deploy env posture.
-4. Run the new H2 cloud proof harness.
-5. Fix the first real failing gate.
-6. Re-run until the harness produces a passing evidence bundle.
-7. Only after that, tighten docs/env templates and improve operator ergonomics.
-
-## Recommended priorities after first real run
-In order:
-1. Make `scripts/run_h2_cloud_proof.py` pass against the real cloud target.
-2. If it fails, fix product/runtime truth before polishing docs.
-3. Once passing, add:
-   - an H2 env example file for the proof runner
-   - better failure diagnostics
-   - cleanup mode / idempotent rerun behavior if needed
-4. After the proof path is boring, revisit parallel-safe H3/H4 work.
+   - `docs/CLOUD_PROOF_CHECKLIST.md`
+3. Inspect:
+   - `app/api/routes_billing_admin.py`
+   - `app/api/routes_tenant_billing.py`
+   - related billing repositories/services
+4. Determine:
+   - are the expected materialization/report endpoints actually implemented under different paths?
+   - or are they missing?
+5. Fix tenant billing overview so it resolves the created open period correctly.
+6. Resume cloud H2 proof from materialization/report/summarize onward.
 
 ## Blunt summary
-The session already moved H2 from planning into implementation.
-The key artifact is:
-- `scripts/run_h2_cloud_proof.py`
-
-The next agent should **not** spend time rethinking the roadmap unless the live proof run exposes a real contradiction.
-The correct next action is to run the harness against the target deployment and fix whatever breaks first.
+H2 is no longer blocked by deployment, identity, or upstream provider issues.
+The current problem is a billing/control-plane correctness gap.
+The right next move is to fix that gap, not to reopen the solved lower layers.

@@ -228,7 +228,10 @@ async def lifespan(app: FastAPI):
         services.rollup_repository = rollup_repository
 
     if policy_store_dsn and bool(getattr(settings, "billing_prep_enabled", False)):
-        billing_repository = PostgresBillingRepository(policy_store_dsn)
+        billing_repository = PostgresBillingRepository(
+            policy_store_dsn,
+            patronage_required_threshold_usd=float(getattr(settings, "billing_patronage_threshold_usd", 50.0) or 50.0),
+        )
         await billing_repository.warmup()
         commercial_event_repository = PostgresCommercialEventRepository(policy_store_dsn)
         await commercial_event_repository.warmup()

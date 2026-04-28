@@ -1,6 +1,6 @@
 # START HERE
 
-_Last updated: 2026-04-26_
+_Last updated: 2026-04-28 (early)_
 _Audience: engineers, operators, and takeover agents landing cold in Metera._
 
 This is the primary entrypoint for the docs tree.
@@ -11,78 +11,64 @@ Metera is a financial control plane around an OpenAI-compatible AI gateway. The 
 
 `scrub -> exact cache -> semantic cache -> upstream -> request_ledger -> rollups -> billing/reporting -> enforcement`
 
-As of 2026-04-26, the local Docker Pilot path has been re-proved end to end with repository-backed identity, authenticated attribution, request-ledger persistence, rollup rebuilds, billing summarize/reconcile/close, commercial events, and a real post-close `402 Payment Required` response.
+As of 2026-04-28 early, the local Docker Pilot path is re-proved and the Railway cloud deployment is substantially live: readiness is green, Redis and pgvector are active, repository-backed identity is working, admin bootstrap works, tenant scope works, real tenant chat traffic now succeeds end-to-end, tenant billing overview coherence is fixed, and the expected billing materialization/report admin surfaces are live. The current blocker is no longer route completeness; it is a repeatable API-first commercial enforcement proof path.
 
 ## Canonical read order
 1. `docs/HANDOFF.md`
 2. `docs/START_HERE.md`
 3. `docs/CURRENT_STATE.md`
-4. `docs/BETA_MASTER_MAP.md`
-5. `docs/ENGINEER_ONBOARDING.md`
-6. `docs/PILOT_RUNBOOK.md`
-7. `docs/PILOT_EVIDENCE_SUMMARY_2026-04-24.md`
-8. `docs/DEPLOYMENT_READINESS_PLAN.md`
-9. Module docs only as needed:
-   - `docs/MOD_BETA_RELIABILITY.md`
-   - `docs/MOD_COMMERCIAL_POLICY.md`
-   - `docs/MOD_OPERATOR_CLEANLINESS.md`
+4. `docs/H2_SESSION_HANDOFF_2026-04-27.md`
+5. `docs/H2_CLOUD_DEPLOYMENT_ROADMAP.md`
+6. `docs/CLOUD_PROOF_CHECKLIST.md`
+7. `docs/DEPLOYMENT_READINESS_PLAN.md`
+8. module docs only as needed
 
 ## What is proved right now
+### Local
 - repository-backed identity works
 - authenticated tenant/workspace/api-key attribution works
 - request ledger persistence works
 - rollup rebuild works
 - billing summarize / reconcile / close works
-- report + invoice generation work
-- tenant-facing billing reads work under authenticated scope
-- commercial enforcement works with a real `402 Payment Required`
-- canonical proof script works in `metera-app`
+- report + invoice generation work locally
+- tenant-facing billing reads work locally under authenticated scope
+- commercial enforcement works locally with a real `402 Payment Required`
+
+### Cloud
+- Railway deployment is up and healthy
+- `/ready` is green
+- Redis active
+- pgvector active
+- repository-backed identity works
+- admin bootstrap works
+- tenant billing scope resolution works
+- live tenant chat traffic works through OpenAI
+- plan/subscription/period creation works
+- admin period listing works
+
+## What is not proved yet in cloud
+- final cloud-side summarize/reconcile/close/report path under a boring API-first proof posture
+- final cloud-side `402 Payment Required` proof
+- durable operator guidance for controlled non-production threshold proof runs
 
 ## Current release posture
-- **Pilot:** proved and revalidated
-- **Beta module map:** effectively complete and revalidated
-- **Next focus:** Phase 2 hardening — deployment readiness, posture hardening, cloud proof, and productization
+- **Pilot local:** proved and revalidated
+- **H2 cloud proof:** in progress, materially advanced
+- **Next focus:** complete the billing/control-plane proof path in cloud
 
-Primary next-plan reference:
-- `docs/PHASE_2_HARDENING_PLAN.md`
-
-## Canonical operator command
+## Canonical operator command (local)
 From `metera/`:
 
 ```bash
 docker compose --env-file .env.pilot.local up -d --build
 ```
 
-Canonical proof:
-
-```bash
-docker exec metera-app sh -lc "cd /app && METERA_BASE_URL=http://127.0.0.1:8000 METERA_ADMIN_API_KEY=dev-admin-key METERA_POLICY_STORE_DSN=postgresql://postgres:postgres@pgvector:5432/metera python scripts/pilot_proof_v1.py"
-```
-
-## Quick checks
-```bash
-curl http://127.0.0.1:8000/health
-curl -i http://127.0.0.1:8000/ready
-curl -H "x-metera-admin-key: dev-admin-key" http://127.0.0.1:8000/admin/identity/status
-curl -H "x-metera-admin-key: dev-admin-key" http://127.0.0.1:8000/admin/control/request-ledger?limit=5
-```
-
-Readiness rule:
-- `/health` is not the deployment acceptance gate
-- `/ready` is the strict gate for pilot/cloud posture acceptance
-- if `/health` is green and `/ready` is not, do not treat the environment as valid proof
-
-Expected identity posture:
-- `identity_enabled = true`
-- `identity_mode = repository`
-- `repository_available = true`
-
 ## Source-of-truth docs to trust
 - runtime / posture snapshot: `docs/CURRENT_STATE.md`
-- beta scope + routing: `docs/BETA_MASTER_MAP.md`
-- operator procedure: `docs/PILOT_RUNBOOK.md`
-- canonical pilot evidence: `docs/PILOT_EVIDENCE_SUMMARY_2026-04-24.md`
+- cloud roadmap: `docs/H2_CLOUD_DEPLOYMENT_ROADMAP.md`
+- live takeover status: `docs/H2_SESSION_HANDOFF_2026-04-27.md`
 - release sequencing: `docs/DEPLOYMENT_READINESS_PLAN.md`
+- general takeover: `docs/HANDOFF.md`
 
 ## Archive rule
 If a doc is not part of the active source-of-truth set and is only historical, superseded, or exploratory, it belongs under `docs/archive/`, not in the live top-level docs directory.

@@ -1,6 +1,6 @@
 # Metera Engineer Onboarding
 
-_Last updated: 2026-04-26_
+_Last updated: 2026-04-28_
 _Audience: engineers taking over development, debugging, operations, or deployment work._
 
 ## First 15 minutes
@@ -53,11 +53,21 @@ Interpretation:
 - `/ready` = strict readiness gate for pilot/deployment acceptance
 - if `/health` is green but `/ready` is not, the stack booted but the posture is wrong or degraded
 
-Run the canonical proof:
+Run the canonical local proof:
 
 ```bash
 docker exec metera-app sh -lc "cd /app && METERA_BASE_URL=http://127.0.0.1:8000 METERA_ADMIN_API_KEY=dev-admin-key METERA_POLICY_STORE_DSN=postgresql://postgres:postgres@pgvector:5432/metera python scripts/pilot_proof_v1.py"
 ```
+
+Run the canonical cloud/API-first proof:
+
+```bash
+python scripts/run_h2_cloud_proof_api.py
+```
+
+Important:
+- `scripts/run_h2_cloud_proof.py` is the older direct-DB seeding harness and should not be treated as the canonical cloud acceptance path
+- `scripts/run_h2_cloud_proof_api.py` is the source-of-truth cloud proof path because it drives the real admin + tenant APIs
 
 ## Expected healthy pilot posture
 - identity mode is `repository`
@@ -86,6 +96,8 @@ docker exec metera-app sh -lc "cd /app && METERA_BASE_URL=http://127.0.0.1:8000 
 - authenticated tenant scope is the intended path
 - query-param tenant fallback is transitional only
 - preserve the request path; harden around it
+- direct DB seeding is acceptable for local/internal validation, but not as the canonical cloud proof path
+- customer-facing savings should usually be framed as avoided-cost percentage, while repo-native `realized_savings_ratio` remains an internal/reporting ratio
 
 ## What not to do first
 Do not begin with:
