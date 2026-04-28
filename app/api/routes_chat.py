@@ -74,19 +74,14 @@ async def chat_completions(
         return response
     except UpstreamProviderError as exc:
         logger.warning(
-            "upstream_provider_error",
-            extra={
-                "metera": {
-                    "path": "/v1/chat/completions",
-                    "namespace": context.namespace,
-                    "request_id": context.request_id,
-                    "tenant_id": context.tenant_id,
-                    "workspace_id": context.workspace_id,
-                    "status_code": exc.status_code,
-                    "retryable": exc.retryable,
-                    "message": exc.message,
-                }
-            },
+            "upstream_provider_error path=/v1/chat/completions namespace=%s request_id=%s tenant_id=%s workspace_id=%s status_code=%s retryable=%s message=%s",
+            context.namespace,
+            context.request_id,
+            context.tenant_id,
+            context.workspace_id,
+            exc.status_code,
+            exc.retryable,
+            exc.message,
         )
         raise HTTPException(status_code=exc.status_code, detail={"message": exc.message, "retryable": exc.retryable}) from exc
 
