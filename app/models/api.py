@@ -604,6 +604,12 @@ class SubscriptionSummary(BaseModel):
     current_period_end: str
 
 
+class SubscriptionStatusUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    status: Literal["trialing", "active", "past_due", "canceled"]
+
+
 class BillingPeriodCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 

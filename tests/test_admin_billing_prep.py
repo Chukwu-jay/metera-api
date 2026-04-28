@@ -87,6 +87,15 @@ class FakeBillingRepository:
         )
         return "subscription_1"
 
+    async def update_subscription_status(self, *, subscription_id, status):
+        subscription = next((row for row in self.subscriptions if row["id"] == subscription_id), None)
+        if subscription is None:
+            raise ValueError("subscription not found")
+        if status not in {"trialing", "active", "past_due", "canceled"}:
+            raise ValueError("invalid subscription status")
+        subscription["status"] = status
+        return subscription
+
     async def create_billing_period(self, *, tenant_id, subscription_id, period_start=None, period_end=None):
         if not self.subscriptions:
             raise ValueError("subscription not found")
@@ -231,6 +240,7 @@ class FakeBillingRepository:
                 "metera_savings_usd=50.01",
                 "shadow_savings_usd=0.75",
                 "usage_charges_total_usd=50.01",
+                "total_tokens_saved=1800",
             ],
             "billing_window": {
                 "period_start": period["period_start"].isoformat(),
@@ -257,7 +267,7 @@ class FakeBillingRepository:
                 "Intelligence Recovered (Tokens) reached 1,800 across cache-served requests in this window.",
                 "Reconciliation is clean for the current billing-period snapshot.",
             ],
-            "export_content": '{\n  "billing_period_id": "billing_period_1",\n  "status": "closing",\n  "totals": {\n    "gross_cost_usd": 60.0\n  }\n}' if export_format == "json" else "Metera Billing Report\nBilling Period: billing_period_1\n\nStructured Totals:",
+            "export_content": '{\n  "billing_period_id": "billing_period_1",\n  "status": "closing",\n  "totals": {\n    "gross_cost_usd": 60.0\n  }\n}' if export_format == "json" else "Metera Billing Report\nBilling Period: billing_period_1\n\nStructured Totals:\ngross_cost_usd=60.00\nmetera_savings_usd=50.01\nshadow_savings_usd=0.75\nusage_charges_total_usd=50.01\ntotal_tokens_saved=1800",
             "export_filename": "billing_report_billing_period_1.json" if export_format == "json" else "billing_report_billing_period_1.txt",
             "format": export_format,
         }
@@ -311,7 +321,7 @@ class FakeBillingRepository:
                 "total_tokens_saved": 1800.0,
             },
             "format": export_format,
-            "export_content": '{\n  "billing_period_id": "billing_period_1",\n  "totals": {\n    "gross_cost_usd": 60.0\n  }\n}' if export_format == "json" else "Metera Draft Invoice Stub\nBilling Period: billing_period_1\n\nStructured Totals:",
+            "export_content": '{\n  "billing_period_id": "billing_period_1",\n  "totals": {\n    "gross_cost_usd": 60.0\n  }\n}' if export_format == "json" else "Metera Draft Invoice Stub\nBilling Period: billing_period_1\n\nStructured Totals:\ngross_cost_usd=60.00\nmetera_savings_usd=50.01\nnet_cost_avoided_usd=50.01\ntotal_tokens_saved=1800",
             "export_filename": "invoice_stub_billing_period_1.json" if export_format == "json" else "invoice_stub_billing_period_1.txt",
         }
         self.invoices = [invoice]
@@ -604,6 +614,39 @@ def test_summarize_emits_patronage_required_but_not_service_suspended_before_clo
     event_types = {row["event_type"] for row in events.json()}
     assert "patronage_required" in event_types
     assert "service_suspended" not in event_types
+
+
+def test_subscription_status_update_supports_recovery_activation() -> None:
+    client = TestClient(build_app())
+    headers = {"x-metera-admin-key": "secret"}
+
+    client.post(
+        "/admin/control/billing/subscriptions",
+        headers=headers,
+        json={
+            "tenant_id": "tenant_1",
+            "plan_id": "plan_1",
+            "status": "trialing",
+            "current_period_start": "2026-04-01T00:00:00",
+            "current_period_end": "2026-05-01T00:00:00",
+            "trial_ends_at": None,
+        },
+    )
+
+    response = client.post(
+        "/admin/control/billing/subscriptions/subscription_1/status",
+        headers=headers,
+        json={"status": "active"},
+    )
+    events = client.get(
+        "/admin/control/billing/commercial-events?tenant_id=tenant_1&limit=10",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "active"
+    event_types = {row["event_type"] for row in events.json()}
+    assert "subscription_status_updated" in event_types
 
 
 def test_admin_billing_routes_require_repository() -> None:

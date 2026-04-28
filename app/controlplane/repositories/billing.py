@@ -222,6 +222,26 @@ class PostgresBillingRepository:
         )
         return subscription_id
 
+    async def update_subscription_status(self, *, subscription_id: str, status: str) -> dict[str, Any]:
+        pool = await self._get_pool()
+        await self.ensure_schema()
+        allowed_statuses = {"trialing", "active", "past_due", "canceled"}
+        if status not in allowed_statuses:
+            raise ValueError("invalid subscription status")
+        row = await pool.fetchrow(
+            """
+            UPDATE subscriptions
+            SET status = $2, updated_at = NOW()
+            WHERE id = $1
+            RETURNING *
+            """,
+            subscription_id,
+            status,
+        )
+        if row is None:
+            raise ValueError("subscription not found")
+        return dict(row)
+
     async def _get_billing_period_row(self, *, billing_period_id: str) -> dict[str, Any]:
         pool = await self._get_pool()
         await self.ensure_schema()

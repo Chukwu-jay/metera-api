@@ -20,6 +20,7 @@ from app.models.api import (
     PlanSummary,
     PlanUpsertRequest,
     SubscriptionCreateRequest,
+    SubscriptionStatusUpdateRequest,
     SubscriptionSummary,
     UsageChargeMaterializationRequest,
     UsageChargeMaterializationResponse,
@@ -191,6 +192,35 @@ async def create_subscription(payload: SubscriptionCreateRequest, request: Reque
     )
     rows = await repository.list_subscriptions(tenant_id=payload.tenant_id)
     row = next(row for row in rows if row["id"] == subscription_id)
+    return SubscriptionSummary(
+        id=row["id"],
+        tenant_id=row["tenant_id"],
+        plan_id=row["plan_id"],
+        status=row["status"],
+        current_period_start=row["current_period_start"].isoformat(),
+        current_period_end=row["current_period_end"].isoformat(),
+    )
+
+
+@router.post("/control/billing/subscriptions/{subscription_id}/status", response_model=SubscriptionSummary)
+async def update_subscription_status(subscription_id: str, payload: SubscriptionStatusUpdateRequest, request: Request) -> SubscriptionSummary:
+    repository = _require_billing_repository(request)
+    try:
+        row = await repository.update_subscription_status(subscription_id=subscription_id, status=payload.status)
+    except ValueError as exc:
+        detail = str(exc)
+        status_code = status.HTTP_404_NOT_FOUND if detail == "subscription not found" else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    await _emit_commercial_event(
+        request,
+        event_id=f"subscription_status_updated:{subscription_id}:{payload.status}",
+        event_type="subscription_status_updated",
+        status_value=payload.status,
+        tenant_id=row.get("tenant_id"),
+        subscription_id=row.get("id"),
+        reason="operator_status_change",
+        payload={"subscription_id": row.get("id"), "status": payload.status},
+    )
     return SubscriptionSummary(
         id=row["id"],
         tenant_id=row["tenant_id"],
