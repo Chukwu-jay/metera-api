@@ -62,14 +62,14 @@ class ChatCompletionRequest(BaseModel):
 
 
 class ChoiceMessage(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(extra="allow", str_strip_whitespace=True)
 
     role: str = Field(default="assistant", min_length=1, max_length=32)
     content: str = Field(..., max_length=MAX_MESSAGE_CONTENT_LENGTH)
 
 
 class Choice(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
     index: int = 0
     message: ChoiceMessage
@@ -77,7 +77,7 @@ class Choice(BaseModel):
 
 
 class Usage(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
     prompt_tokens: int = Field(default=0, ge=0)
     completion_tokens: int = Field(default=0, ge=0)
