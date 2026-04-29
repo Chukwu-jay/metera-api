@@ -1,6 +1,6 @@
 # START HERE
 
-_Last updated: 2026-04-28 (early)_
+_Last updated: 2026-04-28 (late)_
 _Audience: engineers, operators, and takeover agents landing cold in Metera._
 
 This is the primary entrypoint for the docs tree.
@@ -11,7 +11,7 @@ Metera is a financial control plane around an OpenAI-compatible AI gateway. The 
 
 `scrub -> exact cache -> semantic cache -> upstream -> request_ledger -> rollups -> billing/reporting -> enforcement`
 
-As of 2026-04-28 early, the local Docker Pilot path is re-proved and the Railway cloud deployment is substantially live: readiness is green, Redis and pgvector are active, repository-backed identity is working, admin bootstrap works, tenant scope works, real tenant chat traffic now succeeds end-to-end, tenant billing overview coherence is fixed, and the expected billing materialization/report admin surfaces are live. The current blocker is no longer route completeness; it is a repeatable API-first commercial enforcement proof path.
+As of 2026-04-28 late, the local Docker Pilot path is re-proved and the Railway cloud deployment has completed H2 proof: readiness is green, Redis and pgvector are active, repository-backed identity is working, admin bootstrap works, tenant scope works, real tenant chat traffic succeeds end-to-end, tenant billing overview coherence is fixed, billing materialization/report admin surfaces are live, and the final API-first commercial enforcement proof has been retained with real tenant-facing `402 Payment Required` in both `closing` and `closed` states. H3 commercial recovery is proved, resumed recovery is proved, and the multi-tenant semantic-cache isolation gap surfaced by the earlier soak investigation is now closed with first-class tenant/workspace partitioning plus passing strict and soak validation artifacts.
 
 ## Canonical read order
 1. `docs/HANDOFF.md`
@@ -44,17 +44,19 @@ As of 2026-04-28 early, the local Docker Pilot path is re-proved and the Railway
 - tenant billing scope resolution works
 - live tenant chat traffic works through OpenAI
 - plan/subscription/period creation works
-- admin period listing works
+- billing materialization/summarize/reconcile/report path works live
+- tenant-facing `402 Payment Required` is proved live in both `closing` and `closed` states
 
 ## What is not proved yet in cloud
-- final cloud-side summarize/reconcile/close/report path under a boring API-first proof posture
-- final cloud-side `402 Payment Required` proof
-- durable operator guidance for controlled non-production threshold proof runs
+- H2 proof closure is no longer the gap
+- remaining cloud work is post-H2 reproducibility and hardening
+- H3 direct and resumed commercial recovery are both now proved live; the remaining work is broader hardening, operator boringness, and confidence expansion
 
 ## Current release posture
 - **Pilot local:** proved and revalidated
-- **H2 cloud proof:** in progress, materially advanced
-- **Next focus:** complete the billing/control-plane proof path in cloud
+- **H2 cloud proof:** complete
+- **H3 progress:** live commercial recovery proof complete; resumed recovery proof complete; cold-operator hardening materially advanced; first multi-tenant correctness pass complete
+- **Next focus:** operator reproducibility cleanup, evidence compression, and broader hardening/confidence expansion
 
 ## Canonical operator command (local)
 From `metera/`:

@@ -8,6 +8,8 @@ from typing import Any, Protocol
 @dataclass(slots=True)
 class SemanticRecord:
     namespace: str
+    tenant_id: str | None
+    workspace_id: str | None
     model: str
     model_family: str
     text: str
@@ -39,3 +41,4 @@ class SemanticStore(Protocol):
     ) -> SemanticStoreMatch | None: ...
     async def invalidate_namespace(self, namespace: str) -> int: ...
     async def prune_expired(self, *, now: datetime) -> int: ...
+int: ...

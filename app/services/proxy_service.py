@@ -168,6 +168,8 @@ class ProxyService:
             if semantic_allowed:
                 semantic_hit = await self.semantic_cache.find_match(
                     namespace=context.namespace,
+                    tenant_id=context.tenant_id,
+                    workspace_id=context.workspace_id,
                     model=request.model,
                     text=scrub_result.scrubbed_text,
                 )
@@ -271,6 +273,8 @@ class ProxyService:
                     self._record_shadow_semantic_outcome,
                     request_id=context.request_id or "unknown",
                     namespace=context.namespace,
+                    tenant_id=context.tenant_id,
+                    workspace_id=context.workspace_id,
                     model=request.model,
                     scrubbed_text=scrub_result.scrubbed_text,
                     prompt_text=normalized,
@@ -281,6 +285,8 @@ class ProxyService:
                 )
             await self.semantic_cache.add_entry(
                 namespace=context.namespace,
+                tenant_id=context.tenant_id,
+                workspace_id=context.workspace_id,
                 model=request.model,
                 text=scrub_result.scrubbed_text,
                 response_payload=upstream_response.model_dump(),
@@ -439,6 +445,8 @@ class ProxyService:
         *,
         request_id: str,
         namespace: str,
+        tenant_id: str | None,
+        workspace_id: str | None,
         model: str,
         scrubbed_text: str,
         prompt_text: str,
@@ -449,6 +457,8 @@ class ProxyService:
     ) -> None:
         shadow_hit = await self.semantic_cache.find_match(
             namespace=namespace,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
             model=model,
             text=scrubbed_text,
             similarity_threshold=shadow_threshold,

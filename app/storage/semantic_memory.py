@@ -17,6 +17,8 @@ class InMemorySemanticStore:
         self,
         *,
         namespace: str,
+        tenant_id: str | None,
+        workspace_id: str | None,
         model: str,
         model_family: str,
         vector: list[float],
@@ -29,6 +31,10 @@ class InMemorySemanticStore:
 
         for record in self._records:
             if record.namespace != namespace:
+                continue
+            if record.tenant_id != tenant_id:
+                continue
+            if record.workspace_id != workspace_id:
                 continue
             if record.model_family != model_family:
                 continue

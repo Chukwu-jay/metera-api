@@ -1,6 +1,6 @@
 # HANDOFF
 
-_Last updated: 2026-04-27 (late)_
+_Last updated: 2026-04-28 (late)_
 _Audience: the next principal/founding engineer or agent taking over Metera._
 
 Read this file first if you want the shortest path to competent action.
@@ -28,7 +28,7 @@ Do not casually destabilize the request path to improve control-plane convenienc
 ## 2) Current project status
 ### Blunt status
 Metera’s local Docker Pilot path is re-proved.
-The Railway deployment is now also substantially real:
+The Railway deployment is now also fully H2-proved:
 - `/ready` green
 - Redis active
 - pgvector active
@@ -36,20 +36,21 @@ The Railway deployment is now also substantially real:
 - admin bootstrap works
 - tenant scope resolution works
 - live tenant chat traffic works through OpenAI
-- tenant overview now resolves the live open billing period correctly
+- tenant overview resolves the live billing period correctly
 - admin billing report/materialization compatibility paths are live
+- final API-first cloud billing flow was exercised through summarize/reconcile/close/report
+- tenant-facing `402 Payment Required` was observed live in both `closing` and `closed` states
 
 The current blocker is **not** infra anymore.
-The current blocker is now **repeatable API-first commercial enforcement proof**, not route-surface completeness.
+H2 is closed. The current work is now post-H2 hardening and release progression.
 
 ### What this means practically
 Metera is not in “does the architecture work?” mode.
 Metera is in:
-- cloud proof completion
-- billing/control-plane completion
 - deployment maturity hardening
 - operational clarity
 - disciplined next-step execution
+- post-H2 beta progression
 
 ---
 
@@ -86,20 +87,22 @@ Verified against `https://metera-api-production.up.railway.app`:
 
 ---
 
-## 5) Current blocking issue
-The first real unresolved cloud H2 blocker is now:
+## 5) Former blocking issue, now closed
+The former unresolved cloud H2 blocker was:
 
 ### API-first commercial enforcement proof
-Observed live:
-- billing admin route surface mismatch has been fixed
-- tenant billing overview/read-model mismatch has been fixed
-- API-first proof can now materialize and report real traffic in cloud
-- the remaining hard part is proving final `402` enforcement in a repeatable way without direct DB seeding or giant provider-expensive threshold floods
+That blocker is now closed.
+
+Observed live and retained:
+- billing admin route surface mismatch is fixed
+- tenant billing overview/read-model mismatch is fixed
+- API-first proof materializes and reports real traffic in cloud
+- final `402` enforcement was proved in a repeatable API-first posture with retained evidence
 
 That means the next engineer should work on:
-- API-first proof harness maturity
-- controlled non-production threshold posture
-- retained enforcement evidence and operator reproducibility
+- operator reproducibility cleanup
+- proof harness/document polish
+- post-H2 beta hardening
 
 Do not restart the investigation from infra or OpenAI unless new contradictory evidence appears.
 
@@ -136,19 +139,29 @@ These are useful anchors for takeover work.
 ---
 
 ## 8) The actual next job
-The next job is **complete the cloud billing proof path**.
+The next job is **post-H2 cleanup and progression**.
 
 ### Specifically
-1. use `scripts/run_h2_cloud_proof_api.py` as the canonical cloud proof harness
-2. keep direct DB seeding as local/internal validation only
-3. use `METERA_BILLING_PATRONAGE_THRESHOLD_USD` as the explicit non-production proof lever when needed
-4. retain prompts / tokens / avoided-cost % / repo ratio / final `402` evidence together
+1. keep `scripts/run_h2_cloud_proof_api.py` as the canonical H2 cloud proof harness
+2. keep `scripts/run_h3_commercial_recovery_proof.py` as the active H3 recovery harness
+3. keep `scripts/run_cloud_operator_flow.py` as the cold-operator entrypoint
+4. keep direct DB seeding as local/internal validation only
+5. preserve the retained proof packs:
+   - `docs/archive/railway/H2_FINAL_402_EVIDENCE_2026-04-28.md`
+   - `artifacts/h2_live_threshold_run.json`
+   - `artifacts/h3_live_recovery_run_700.json`
+6. preserve the resumed H3 proof artifacts captured from a true enforcement-stage checkpoint
+7. preserve the semantic partitioning validation artifacts:
+   - `artifacts/h3_multi_tenant_strict_partitioning_single_round.json`
+   - `artifacts/h3_multi_tenant_strict_partitioning_soak.json`
+8. continue beta hardening, restart/rebuild boringness, operator reproducibility, and broader multi-tenant confidence work
 
 ### Not the next job
 - re-debug Redis
 - re-debug pgvector
 - re-debug OpenAI keys
 - re-open local pilot architecture questions
+- pretend H2 is still blocked by proof closure
 
 ---
 
@@ -165,4 +178,5 @@ The next job is **complete the cloud billing proof path**.
 ---
 
 ## 10) Blunt one-sentence summary
-Metera’s cloud runtime now basically works; the current frontier is finishing the billing/control-plane proof path cleanly enough to complete H2.
+Metera’s cloud runtime and billing/control-plane proof path now survive real Railway deployment with retained final `402` evidence; H2 is closed, direct and resumed H3 recovery are both proved, and the frontier is operator boringness plus broader confidence expansion.
+.

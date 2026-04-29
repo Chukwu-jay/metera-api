@@ -14,6 +14,8 @@ DSN = os.getenv("METERA_SEMANTIC_STORE_DSN", "postgresql://postgres:postgres@loc
 TABLE_NAME = os.getenv("METERA_SEMANTIC_TEST_TABLE", "semantic_cache_entries_proof")
 SIMILARITY_THRESHOLD = float(os.getenv("METERA_SEMANTIC_TEST_THRESHOLD", "0.9"))
 NAMESPACE = "semantic-validation"
+TENANT_ID = "tenant-proof"
+WORKSPACE_ID = "workspace-proof"
 MODEL = "gpt-4o-mini"
 MODEL_FAMILY = "gpt-4o"
 
@@ -28,6 +30,8 @@ async def main() -> int:
         records = [
             SemanticRecord(
                 namespace=NAMESPACE,
+                tenant_id=TENANT_ID,
+                workspace_id=WORKSPACE_ID,
                 model=MODEL,
                 model_family=MODEL_FAMILY,
                 text="Summarize the Q1 revenue memo.",
@@ -39,6 +43,8 @@ async def main() -> int:
             ),
             SemanticRecord(
                 namespace=NAMESPACE,
+                tenant_id=TENANT_ID,
+                workspace_id=WORKSPACE_ID,
                 model=MODEL,
                 model_family=MODEL_FAMILY,
                 text="Summarize the quarterly earnings report.",
@@ -50,6 +56,8 @@ async def main() -> int:
             ),
             SemanticRecord(
                 namespace=NAMESPACE,
+                tenant_id=TENANT_ID,
+                workspace_id=WORKSPACE_ID,
                 model=MODEL,
                 model_family=MODEL_FAMILY,
                 text="Give me a cookie recipe with cinnamon.",
@@ -66,10 +74,11 @@ async def main() -> int:
 
         probe_vector = [0.985, 0.015, 0.0]
         expected = max(records, key=lambda record: cosine_similarity(probe_vector, record.vector))
-        expected_similarity = cosine_similarity(probe_vector, expected.vector)
 
         match = await store.find_best_match(
             namespace=NAMESPACE,
+            tenant_id=TENANT_ID,
+            workspace_id=WORKSPACE_ID,
             model=MODEL,
             model_family=MODEL_FAMILY,
             vector=probe_vector,
@@ -97,6 +106,8 @@ async def main() -> int:
 
         strict_match = await store.find_best_match(
             namespace=NAMESPACE,
+            tenant_id=TENANT_ID,
+            workspace_id=WORKSPACE_ID,
             model=MODEL,
             model_family=MODEL_FAMILY,
             vector=probe_vector,

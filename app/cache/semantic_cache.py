@@ -34,6 +34,8 @@ class SemanticCache:
         self,
         *,
         namespace: str,
+        tenant_id: str | None,
+        workspace_id: str | None,
         model: str,
         text: str,
         similarity_threshold: float | None = None,
@@ -45,6 +47,8 @@ class SemanticCache:
         model_family = derive_model_family(model)
         match = await self.store.find_best_match(
             namespace=namespace,
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
             model=model,
             model_family=model_family,
             vector=embedding.vector,
@@ -66,6 +70,8 @@ class SemanticCache:
         self,
         *,
         namespace: str,
+        tenant_id: str | None,
+        workspace_id: str | None,
         model: str,
         text: str,
         response_payload: dict[str, Any],
@@ -76,6 +82,8 @@ class SemanticCache:
         await self.store.add(
             SemanticRecord(
                 namespace=namespace,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
                 model=model,
                 model_family=derive_model_family(model),
                 text=text,

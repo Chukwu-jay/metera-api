@@ -25,6 +25,8 @@ class PgvectorSemanticStore:
             f"""
             INSERT INTO {self.table_name} (
                 namespace,
+                tenant_id,
+                workspace_id,
                 model,
                 model_family,
                 text,
@@ -34,9 +36,11 @@ class PgvectorSemanticStore:
                 expires_at,
                 metadata
             )
-            VALUES ($1, $2, $3, $4, $5::vector, $6::jsonb, $7, $8, $9::jsonb)
+            VALUES ($1, $2, $3, $4, $5, $6, $7::vector, $8::jsonb, $9, $10, $11::jsonb)
             """,
             record.namespace,
+            record.tenant_id,
+            record.workspace_id,
             record.model,
             record.model_family,
             record.text,
@@ -51,6 +55,8 @@ class PgvectorSemanticStore:
         self,
         *,
         namespace: str,
+        tenant_id: str | None,
+        workspace_id: str | None,
         model: str,
         model_family: str,
         vector: list[float],
@@ -60,10 +66,12 @@ class PgvectorSemanticStore:
     ) -> SemanticStoreMatch | None:
         pool = await self._get_pool()
         min_cosine_distance = 1.0 - similarity_threshold
-        created_before_clause = "AND created_at < $7" if created_before is not None else ""
+        created_before_clause = "AND created_at < $9" if created_before is not None else ""
         query = f"""
             SELECT
                 namespace,
+                tenant_id,
+                workspace_id,
                 model,
                 model_family,
                 text,
@@ -72,19 +80,23 @@ class PgvectorSemanticStore:
                 created_at,
                 expires_at,
                 metadata,
-                (1 - (embedding <=> $5::vector)) AS similarity
+                (1 - (embedding <=> $7::vector)) AS similarity
             FROM {self.table_name}
             WHERE namespace = $1
-              AND model_family = $2
-              AND (expires_at IS NULL OR expires_at > $3)
-              AND (model = $4 OR model_family = $2)
-              AND (embedding <=> $5::vector) <= $6
+              AND tenant_id IS NOT DISTINCT FROM $2
+              AND workspace_id IS NOT DISTINCT FROM $3
+              AND model_family = $4
+              AND (expires_at IS NULL OR expires_at > $5)
+              AND (model = $6 OR model_family = $4)
+              AND (embedding <=> $7::vector) <= $8
               {created_before_clause}
-            ORDER BY embedding <=> $5::vector ASC, created_at DESC
+            ORDER BY embedding <=> $7::vector ASC, created_at DESC
             LIMIT 1
             """
         params = [
             namespace,
+            tenant_id,
+            workspace_id,
             model_family,
             _normalize_datetime(now),
             model,
@@ -142,6 +154,8 @@ class PgvectorSemanticStore:
                 CREATE TABLE IF NOT EXISTS {self.table_name} (
                     id BIGSERIAL PRIMARY KEY,
                     namespace TEXT NOT NULL,
+                    tenant_id TEXT NULL,
+                    workspace_id TEXT NULL,
                     model TEXT NOT NULL,
                     model_family TEXT NOT NULL,
                     text TEXT NOT NULL,
@@ -152,6 +166,15 @@ class PgvectorSemanticStore:
                     metadata JSONB NOT NULL DEFAULT '{{}}'::jsonb
                 )
                 """
+            )
+            await conn.execute(
+                f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS tenant_id TEXT NULL"
+            )
+            await conn.execute(
+                f"ALTER TABLE {self.table_name} ADD COLUMN IF NOT EXISTS workspace_id TEXT NULL"
+            )
+            await conn.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_{self.table_name}_scope_family ON {self.table_name} (tenant_id, workspace_id, namespace, model_family)"
             )
             await conn.execute(
                 f"CREATE INDEX IF NOT EXISTS idx_{self.table_name}_namespace_family ON {self.table_name} (namespace, model_family)"
@@ -176,6 +199,8 @@ def _normalize_datetime(value: datetime | None) -> datetime | None:
 def _row_to_record(row: Any) -> SemanticRecord:
     return SemanticRecord(
         namespace=row["namespace"],
+        tenant_id=row.get("tenant_id"),
+        workspace_id=row.get("workspace_id"),
         model=row["model"],
         model_family=row["model_family"],
         text=row["text"],
