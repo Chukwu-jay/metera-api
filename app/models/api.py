@@ -727,6 +727,60 @@ class BillingReportSummary(BaseModel):
     format: str
 
 
+class TenantBillingReportSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    billing_period_id: str
+    tenant_id: str
+    subscription_id: str
+    status: str
+    customer_status: str
+    status_explainer: str
+    period_start: str
+    period_end: str
+    request_count: int
+    gross_cost_usd: float
+    metera_savings_usd: float
+    shadow_savings_usd: float
+    additional_savings_opportunity_usd: float
+    usage_charges_total_usd: float
+    total_tokens_saved: int = 0
+    realized_savings_ratio: float
+    matches_realized_savings: bool
+    blocking_issues: list[str] = Field(default_factory=list)
+    summary_lines: list[str] = Field(default_factory=list)
+    billing_window: dict[str, str | None] = Field(default_factory=dict)
+    totals: dict[str, float] = Field(default_factory=dict)
+    narrative: list[str] = Field(default_factory=list)
+    format: str
+    export_filename: str
+
+
+class TenantInvoiceSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    tenant_id: str
+    billing_period_id: str
+    status: str
+    customer_status: str
+    status_explainer: str
+    subtotal_usd: float
+    total_usd: float
+    gross_cost_usd: float
+    metera_savings_usd: float
+    net_cost_avoided_usd: float
+    total_tokens_saved: int = 0
+    realized_savings_ratio: float
+    summary_lines: list[str] = Field(default_factory=list)
+    billing_window: dict[str, str | None] = Field(default_factory=dict)
+    totals: dict[str, float] = Field(default_factory=dict)
+    narrative: list[str] = Field(default_factory=list)
+    proven_roi: dict[str, float] = Field(default_factory=dict)
+    format: str
+    export_filename: str | None = None
+
+
 class TenantBillingScopeResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -744,7 +798,10 @@ class TenantBillingOverviewResponse(BaseModel):
     capabilities: list[str] = Field(default_factory=list)
     active_subscription: SubscriptionSummary | None = None
     current_billing_period: BillingPeriodSummary | None = None
-    latest_report: BillingReportSummary | None = None
+    current_billing_customer_status: str | None = None
+    current_billing_status_explainer: str | None = None
+    latest_report: "TenantBillingReportSummary | None" = None
+    latest_invoice: "TenantInvoiceSummary | None" = None
     recent_history: list["TenantBillingHistoryEntry"] = Field(default_factory=list)
     recent_usage_charges: list["UsageChargeSummary"] = Field(default_factory=list)
     outstanding_adjustments: list["TenantBillingAdjustmentEntry"] = Field(default_factory=list)
@@ -752,6 +809,7 @@ class TenantBillingOverviewResponse(BaseModel):
     grouped_charge_totals: dict[str, float] = Field(default_factory=dict)
     health_flags: list[str] = Field(default_factory=list)
     recommended_action: str = "no_action_required"
+    recommended_action_explainer: str | None = None
 
 
 class CommercialEventSummary(BaseModel):
@@ -804,7 +862,11 @@ class TenantBillingPeriodsListResponse(TenantListEnvelope):
 
 
 class TenantBillingReportsListResponse(TenantListEnvelope):
-    items: list[BillingReportSummary] = Field(default_factory=list)
+    items: list[TenantBillingReportSummary] = Field(default_factory=list)
+
+
+class TenantInvoicesListResponse(TenantListEnvelope):
+    items: list[TenantInvoiceSummary] = Field(default_factory=list)
 
 
 class TenantBillingHistoryListResponse(TenantListEnvelope):

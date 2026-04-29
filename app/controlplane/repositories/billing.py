@@ -572,6 +572,21 @@ class PostgresBillingRepository:
             "export_filename": f"billing_report_{billing_period_id}.{export_extension}",
         }
 
+    async def list_invoices(self, *, tenant_id: str | None = None, billing_period_id: str | None = None) -> list[dict[str, Any]]:
+        pool = await self._get_pool()
+        await self.ensure_schema()
+        query = "SELECT * FROM invoices WHERE 1=1"
+        params: list[Any] = []
+        if tenant_id is not None:
+            params.append(tenant_id)
+            query += f" AND tenant_id = ${len(params)}"
+        if billing_period_id is not None:
+            params.append(billing_period_id)
+            query += f" AND billing_period_id = ${len(params)}"
+        query += " ORDER BY updated_at DESC, created_at DESC"
+        rows = await pool.fetch(query, *params)
+        return [dict(row) for row in rows]
+
     async def generate_invoice_stub(self, *, billing_period_id: str, export_format: str = "json") -> dict[str, Any]:
         pool = await self._get_pool()
         await self.ensure_schema()

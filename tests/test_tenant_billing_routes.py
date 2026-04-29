@@ -7,6 +7,9 @@ from app.api.routes_tenant_billing import router
 
 
 class FakeBillingRepository:
+    def __init__(self) -> None:
+        self.invoices: dict[str, dict] = {}
+
     async def list_subscriptions(self, *, tenant_id=None):
         scoped_tenant_id = tenant_id or "tenant_1"
         return [
@@ -81,10 +84,69 @@ class FakeBillingRepository:
             "blocking_issues": [],
             "summary_lines": ["Gross Cost: $60.00", "Intelligence Recovered (Tokens): 1,800"],
             "line_items": ["gross_cost_usd=60.00", "metera_savings_usd=50.01", "total_tokens_saved=1800"],
+            "billing_window": {
+                "period_start": "2026-04-01T00:00:00",
+                "period_end": "2026-05-01T00:00:00",
+                "closed_at": None,
+            },
+            "totals": {
+                "gross_cost_usd": 60.0,
+                "metera_savings_usd": 50.01,
+                "shadow_savings_usd": 0.75,
+                "usage_charges_total_usd": 50.01,
+                "realized_savings_ratio": 0.8335,
+                "total_tokens_saved": 1800.0,
+            },
+            "reconciliation": {
+                "matches_realized_savings": True,
+                "difference_usd": 0.0,
+            },
+            "narrative": ["Processed 12 requests in the billing window."],
             "export_content": '{"billing_period_id":"billing_period_1"}' if export_format == "json" else "Metera Billing Report",
             "export_filename": "billing_report_billing_period_1.json" if export_format == "json" else "billing_report_billing_period_1.txt",
             "format": export_format,
         }
+
+    async def generate_invoice_stub(self, *, billing_period_id, export_format="json"):
+        invoice = {
+            "id": f"invoice_for_{billing_period_id}",
+            "tenant_id": "tenant_1",
+            "billing_period_id": billing_period_id,
+            "status": "draft",
+            "subtotal_usd": 60.0,
+            "total_usd": 0.0,
+            "gross_cost_usd": 60.0,
+            "metera_savings_usd": 50.01,
+            "net_cost_avoided_usd": 50.01,
+            "total_tokens_saved": 1800,
+            "realized_savings_ratio": 0.8335,
+            "summary_lines": ["Gross Cost: $60.00", "Intelligence Recovered (Tokens): 1,800"],
+            "billing_window": {
+                "period_start": "2026-04-01T00:00:00",
+                "period_end": "2026-05-01T00:00:00",
+                "closed_at": None,
+            },
+            "totals": {
+                "gross_cost_usd": 60.0,
+                "metera_savings_usd": 50.01,
+                "net_cost_avoided_usd": 50.01,
+                "realized_savings_ratio": 0.8335,
+                "total_tokens_saved": 1800.0,
+            },
+            "narrative": ["Customer-facing invoice preview generated from the current billing-period snapshot."],
+            "proven_roi": {
+                "gross_cost_usd": 60.0,
+                "metera_savings_usd": 50.01,
+                "net_cost_avoided_usd": 50.01,
+                "realized_savings_ratio": 0.8335,
+                "total_tokens_saved": 1800.0,
+            },
+            "format": export_format,
+            "export_content": '{"billing_period_id":"billing_period_1"}' if export_format == "json" else "Metera Invoice Preview",
+            "export_filename": "invoice_stub_billing_period_1.json" if export_format == "json" else "invoice_stub_billing_period_1.txt",
+        }
+        self.invoices[billing_period_id] = invoice
+        return invoice
 
     async def list_usage_charges(self, *, tenant_id=None, limit=100):
         return [
@@ -198,10 +260,12 @@ def test_tenant_billing_routes_query_param_fallback() -> None:
     subscriptions = client.get("/control/tenant/billing/subscriptions?tenant_id=tenant_1&limit=1")
     periods = client.get("/control/tenant/billing/periods?tenant_id=tenant_1&status_filter=closing&limit=1")
     reports = client.get("/control/tenant/billing/reports?tenant_id=tenant_1&limit=1&format=json")
+    invoices = client.get("/control/tenant/billing/invoices?tenant_id=tenant_1&limit=1&format=json")
     history = client.get("/control/tenant/billing/history?tenant_id=tenant_1&event_type=billing_period_closed&limit=1")
     usage_charges = client.get("/control/tenant/billing/usage-charges?tenant_id=tenant_1&billing_period_id=billing_period_1&charge_type=managed_spend&limit=1")
     adjustments = client.get("/control/tenant/billing/adjustments?tenant_id=tenant_1&billing_period_id=billing_period_1&limit=1")
     report = client.get("/control/tenant/billing/periods/billing_period_1/report?tenant_id=tenant_1&format=text")
+    invoice = client.get("/control/tenant/billing/periods/billing_period_1/invoice?tenant_id=tenant_1&format=text")
 
     assert scope.status_code == 200
     assert scope.json()["source"] == "query_param_fallback"
@@ -213,13 +277,22 @@ def test_tenant_billing_routes_query_param_fallback() -> None:
     assert overview.json()["active_subscription"]["id"] == "subscription_1"
     assert overview.json()["current_billing_period"]["id"] == "billing_period_1"
     assert overview.json()["current_billing_period"]["total_tokens_saved"] == 1800
+    assert overview.json()["current_billing_customer_status"] == "review_ready"
+    assert "ready for closeout" in overview.json()["current_billing_status_explainer"]
     assert overview.json()["latest_report"]["billing_period_id"] == "billing_period_1"
     assert overview.json()["latest_report"]["total_tokens_saved"] == 1800
+    assert "line_items" not in overview.json()["latest_report"]
+    assert "reconciliation" not in overview.json()["latest_report"]
+    assert "export_content" not in overview.json()["latest_report"]
+    assert overview.json()["latest_invoice"]["billing_period_id"] == "billing_period_1"
+    assert overview.json()["latest_invoice"]["total_tokens_saved"] == 1800
+    assert "export_content" not in overview.json()["latest_invoice"]
     assert overview.json()["recent_history"] == []
     assert overview.json()["outstanding_adjustments"] == []
     assert overview.json()["grouped_charge_totals"]["managed_spend"] == 50.01
     assert overview.json()["health_flags"] == ["billing_period_closing"]
     assert overview.json()["recommended_action"] == "review_period_for_closeout"
+    assert "confirm whether it is ready for closeout" in overview.json()["recommended_action_explainer"]
     assert subscriptions.status_code == 200
     assert subscriptions.json()["count"] == 1
     assert subscriptions.json()["has_more"] is True
@@ -236,6 +309,20 @@ def test_tenant_billing_routes_query_param_fallback() -> None:
     assert reports.json()["next_offset"] == 1
     assert reports.json()["items"][0]["billing_period_id"] == "billing_period_1"
     assert reports.json()["items"][0]["total_tokens_saved"] == 1800
+    assert reports.json()["items"][0]["customer_status"] == "review_ready"
+    assert reports.json()["items"][0]["additional_savings_opportunity_usd"] == 0.75
+    assert "line_items" not in reports.json()["items"][0]
+    assert "reconciliation" not in reports.json()["items"][0]
+    assert "export_content" not in reports.json()["items"][0]
+    assert invoices.status_code == 200
+    assert invoices.json()["count"] == 1
+    assert invoices.json()["has_more"] is True
+    assert invoices.json()["next_offset"] == 1
+    assert invoices.json()["items"][0]["billing_period_id"] == "billing_period_1"
+    assert invoices.json()["items"][0]["status"] == "draft"
+    assert invoices.json()["items"][0]["customer_status"] == "preview"
+    assert "preview generated from the current billing snapshot" in invoices.json()["items"][0]["status_explainer"]
+    assert "export_content" not in invoices.json()["items"][0]
     assert usage_charges.status_code == 200
     assert usage_charges.json()["count"] == 1
     assert usage_charges.json()["items"][0]["charge_type"] == "managed_spend"
@@ -247,8 +334,17 @@ def test_tenant_billing_routes_query_param_fallback() -> None:
     assert report.status_code == 200
     assert report.json()["billing_period_id"] == "billing_period_1"
     assert report.json()["total_tokens_saved"] == 1800
+    assert report.json()["customer_status"] == "review_ready"
     assert report.json()["export_filename"].endswith(".txt")
-    assert report.json()["line_items"][0].startswith("gross_cost_usd=")
+    assert "line_items" not in report.json()
+    assert "reconciliation" not in report.json()
+    assert "export_content" not in report.json()
+    assert invoice.status_code == 200
+    assert invoice.json()["billing_period_id"] == "billing_period_1"
+    assert invoice.json()["status"] == "draft"
+    assert invoice.json()["customer_status"] == "preview"
+    assert invoice.json()["export_filename"].endswith(".txt")
+    assert "export_content" not in invoice.json()
 
 
 def test_tenant_billing_routes_prefer_authenticated_scope() -> None:
@@ -258,6 +354,7 @@ def test_tenant_billing_routes_prefer_authenticated_scope() -> None:
     subscriptions = client.get("/control/tenant/billing/subscriptions?limit=1&offset=1")
     history = client.get("/control/tenant/billing/history?limit=1")
     usage_charges = client.get("/control/tenant/billing/usage-charges?limit=2")
+    invoices = client.get("/control/tenant/billing/invoices?limit=1")
     adjustments = client.get("/control/tenant/billing/adjustments?billing_period_id=billing_period_1&limit=1")
 
     assert scope.status_code == 200
@@ -277,6 +374,7 @@ def test_tenant_billing_routes_prefer_authenticated_scope() -> None:
     assert overview.json()["recent_usage_charges"][0]["id"] == "adjustment_1"
     assert overview.json()["totals_snapshot"]["current_period_realized_savings_usd_total"] == 50.01
     assert overview.json()["totals_snapshot"]["current_period_total_tokens_saved"] == 1800.0
+    assert overview.json()["current_billing_customer_status"] == "review_ready"
     assert overview.json()["grouped_charge_totals"]["manual_adjustment"] == 5.0
     assert overview.json()["grouped_charge_totals"]["managed_spend"] == 50.01
     assert "manual_adjustments_present" in overview.json()["health_flags"]
@@ -297,6 +395,9 @@ def test_tenant_billing_routes_prefer_authenticated_scope() -> None:
     assert usage_charges.json()["has_more"] is True
     assert usage_charges.json()["next_offset"] == 2
     assert usage_charges.json()["items"][0]["tenant_id"] == "tenant_scoped"
+    assert invoices.status_code == 200
+    assert invoices.json()["count"] == 1
+    assert invoices.json()["items"][0]["billing_period_id"] == "billing_period_1"
     assert adjustments.status_code == 200
     assert adjustments.json()["count"] == 1
     assert adjustments.json()["has_more"] is False
@@ -425,6 +526,7 @@ def test_tenant_billing_pagination_metadata() -> None:
 
     subscriptions = client.get("/control/tenant/billing/subscriptions?limit=1")
     reports = client.get("/control/tenant/billing/reports?limit=1&offset=1&format=json")
+    invoices = client.get("/control/tenant/billing/invoices?limit=1&offset=1&format=json")
     usage_charges = client.get("/control/tenant/billing/usage-charges?limit=1&offset=1")
     history = client.get("/control/tenant/billing/history?limit=1&offset=1")
 
@@ -438,6 +540,12 @@ def test_tenant_billing_pagination_metadata() -> None:
     assert reports.json()["items"][0]["billing_period_id"] == "billing_period_2"
     assert reports.json()["has_more"] is False
     assert reports.json()["next_offset"] is None
+
+    assert invoices.status_code == 200
+    assert invoices.json()["count"] == 1
+    assert invoices.json()["items"][0]["billing_period_id"] == "billing_period_2"
+    assert invoices.json()["has_more"] is False
+    assert invoices.json()["next_offset"] is None
 
     assert usage_charges.status_code == 200
     assert usage_charges.json()["count"] == 1
