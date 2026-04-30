@@ -1,11 +1,15 @@
 import pytest
 from fastapi import HTTPException
 
-from app.security.namespace import resolve_namespace, validate_namespace
+from app.security.namespace import derive_default_namespace, resolve_namespace, validate_namespace
 
 
 def test_resolve_namespace_defaults_when_missing() -> None:
     assert resolve_namespace(None, "x-metera-namespace") == "default"
+
+
+def test_derive_default_namespace_from_identity_scope() -> None:
+    assert derive_default_namespace("acme", "prod-assistant") == "acme-prod-assistant"
 
 
 @pytest.mark.parametrize(

@@ -9,7 +9,7 @@ from app.core.dependencies import get_proxy_service
 from app.models.api import ChatCompletionRequest, ChatCompletionResponse
 from app.models.domain import ProxyContext
 from app.providers.errors import UpstreamProviderError
-from app.security.namespace import resolve_namespace
+from app.security.namespace import derive_default_namespace, resolve_namespace
 from app.services.proxy_service import ProxyService
 
 logger = logging.getLogger("metera.chat")
@@ -26,9 +26,8 @@ async def chat_completions(
     authorization: str | None = Header(default=None),
     service: ProxyService = Depends(get_proxy_service),
 ):
-    namespace = resolve_namespace(namespace_header, service.settings.namespace_header)
     bearer_token = _extract_bearer_token(authorization)
-    context = ProxyContext(namespace=namespace, bearer_token=bearer_token, request_id=str(uuid4()))
+    context = ProxyContext(namespace="default", bearer_token=bearer_token, request_id=str(uuid4()))
 
     identity_enabled = bool(getattr(http_request.app.state, "controlplane_identity_enabled", False))
     resolver = getattr(http_request.app.state, "identity_resolver", None)
@@ -52,6 +51,11 @@ async def chat_completions(
         context.api_key_display_name = resolved.api_key_display_name
         context.tenant_role = getattr(resolved, "tenant_role", None)
         context.tenant_capabilities = tuple(getattr(resolved, "tenant_capabilities", ()) or ())
+
+    if namespace_header:
+        context.namespace = resolve_namespace(namespace_header, service.settings.namespace_header)
+    elif context.tenant_slug and context.workspace_slug:
+        context.namespace = derive_default_namespace(context.tenant_slug, context.workspace_slug)
 
     http_request.state.proxy_context = context
     try:

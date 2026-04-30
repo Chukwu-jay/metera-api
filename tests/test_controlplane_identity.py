@@ -157,7 +157,39 @@ def test_chat_route_attaches_identity_metadata_when_enabled() -> None:
 
     assert response.status_code == 200
     body = response.json()
+    assert body["metera"]["namespace"] == "tenant-a"
     assert body["metera"]["tenant_id"] == "tenant_123"
     assert body["metera"]["workspace_id"] == "workspace_456"
     assert body["metera"]["api_key_id"] == "key_abc"
     assert provider.last_bearer_token is None
+
+
+def test_chat_route_derives_namespace_when_header_missing_and_identity_enabled() -> None:
+    _install_identity_test_service(controlplane_identity_enabled=True)
+
+    client = TestClient(app)
+    original_enabled = getattr(app.state, "controlplane_identity_enabled", False)
+    original_resolver = getattr(app.state, "identity_resolver", None)
+    app.state.controlplane_identity_enabled = True
+    app.state.identity_resolver = FakeResolver(ResolverHit())
+
+    response = client.post(
+        "/v1/chat/completions",
+        headers={
+            "authorization": "Bearer good-key",
+        },
+        json={
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "hello derived namespace"}],
+        },
+    )
+
+    app.state.controlplane_identity_enabled = original_enabled
+    app.state.identity_resolver = original_resolver
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["metera"]["namespace"] == "acme-prod-assistant"
+    assert body["metera"]["tenant_id"] == "tenant_123"
+    assert body["metera"]["workspace_id"] == "workspace_456"

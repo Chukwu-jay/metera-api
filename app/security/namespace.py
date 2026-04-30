@@ -4,6 +4,12 @@ from fastapi import HTTPException, status
 VALID_NAMESPACE_CHARACTERS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
 
 
+def derive_default_namespace(tenant_slug: str, workspace_slug: str) -> str:
+    namespace = f"{tenant_slug.strip()}-{workspace_slug.strip()}"
+    validate_namespace(namespace)
+    return namespace
+
+
 def resolve_namespace(header_value: str | None, configured_header_name: str) -> str:
     if not header_value:
         return "default"
