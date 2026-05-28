@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Metera | Safe AI reuse for repeated work</title>
+    <meta
+      name="description"
+      content="Metera helps teams reuse AI work safely across API, ChatGPT, and Claude workflows with workflow memory, semantic hardening, and cost visibility."
+    />
+    <link rel="canonical" href="https://getmetera.com/" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Metera home">
+        <span class="mark">M</span>
+        <span>Metera</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#product">Product</a>
+        <a href="#suites">Suites</a>
+        <a href="#security">Security</a>
+        <a href="/privacy.html">Privacy</a>
+        <a class="nav-cta" href="mailto:joshua@getmetera.com?subject=Metera%20beta%20access">Request beta access</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Private beta for teams doing repeated AI work</p>
+          <h1>Safe AI reuse across APIs, ChatGPT, and Claude.</h1>
+          <p class="lede">
+            Metera turns repeated AI tasks into governed workflow memory, with semantic cache savings,
+            explicit hardening controls, and browser-assisted capture for the tools your team already uses.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="mailto:joshua@getmetera.com?subject=Metera%20beta%20access">Request beta access</a>
+            <a class="button secondary" href="#suites">See product suites</a>
+          </div>
+        </div>
+        <div class="hero-panel" aria-label="Metera product status snapshot">
+          <div class="panel-row">
+            <span>Default hardening</span>
+            <strong>Conservative</strong>
+          </div>
+          <div class="panel-row">
+            <span>Reuse mode</span>
+            <strong>Exact + semantic shadow</strong>
+          </div>
+          <div class="panel-row">
+            <span>Browser actions</span>
+            <strong>Explicit clicks only</strong>
+          </div>
+          <div class="panel-row">
+            <span>Beta surface</span>
+            <strong>API + Chrome bridge</strong>
+          </div>
+        </div>
+      </section>
+
+      <section id="product" class="band">
+        <div class="section-head">
+          <p class="eyebrow">Core promise</p>
+          <h2>Reuse what worked without losing control of context.</h2>
+        </div>
+        <div class="grid three">
+          <article>
+            <h3>Reduce repeated spend</h3>
+            <p>Exact caching handles identical prompts. Semantic analysis measures repeated intent and shows where reuse could save cost.</p>
+          </article>
+          <article>
+            <h3>Prevent cross-contamination</h3>
+            <p>Hardening presets, tenant boundaries, namespaces, and metadata checks keep reuse scoped to the right workload.</p>
+          </article>
+          <article>
+            <h3>Keep human control</h3>
+            <p>The browser bridge stages captures for review and saves workflow memory only after explicit user action.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="suites" class="section">
+        <div class="section-head">
+          <p class="eyebrow">One product, three suites</p>
+          <h2>Metera meets users where AI work already happens.</h2>
+        </div>
+        <div class="suite-list">
+          <article class="suite">
+            <div>
+              <span class="suite-kicker">Suite 1</span>
+              <h3>Metera Control Plane</h3>
+            </div>
+            <p>
+              A governed AI proxy for OpenAI-compatible workloads. It adds exact cache, semantic/shadow cache,
+              DLP, policy presets, request ledgers, tenant boundaries, and savings visibility.
+            </p>
+          </article>
+          <article class="suite">
+            <div>
+              <span class="suite-kicker">Suite 2</span>
+              <h3>Metera Browser Bridge</h3>
+            </div>
+            <p>
+              A Chrome extension for ChatGPT and Claude workflows. It composes prompts from workflow memory,
+              inserts only when clicked, captures selected/latest responses, and saves them back to Metera after review.
+            </p>
+          </article>
+          <article class="suite">
+            <div>
+              <span class="suite-kicker">Suite 3</span>
+              <h3>Metera Workflow Suite</h3>
+            </div>
+            <p>
+              Persistent workflow memory for repeated technical tasks such as ROS setup, Ubuntu setup,
+              deployment triage, implementation handoffs, and customer onboarding.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="security" class="band">
+        <div class="split">
+          <div>
+            <p class="eyebrow">Beta posture</p>
+            <h2>Built for careful rollout, not silent scraping.</h2>
+          </div>
+          <ul class="checklist">
+            <li>Default semantic preset is Conservative.</li>
+            <li>Near matches can be measured in shadow mode before live reuse.</li>
+            <li>Browser captures are staged locally for review.</li>
+            <li>Provider prompts are never auto-submitted by the extension.</li>
+            <li>Durable memory is saved only after explicit user action.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section cta-section">
+        <h2>Join the private beta.</h2>
+        <p>
+          We are onboarding teams with repeated AI workflows who want safer reuse, cost visibility,
+          and browser-assisted workflow memory.
+        </p>
+        <a class="button primary" href="mailto:joshua@getmetera.com?subject=Metera%20beta%20access">Email joshua@getmetera.com</a>
+      </section>
+    </main>
+
+    <footer>
+      <span>© <span id="year"></span> Metera</span>
+      <a href="/privacy.html">Privacy</a>
+      <a href="/support.html">Support</a>
+      <a href="/security.html">Security</a>
+    </footer>
+    <script>
+      document.getElementById("year").textContent = new Date().getFullYear();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy Policy | Metera</title>
+    <meta name="description" content="Metera privacy policy for the private beta and browser bridge." />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/"><span class="mark">M</span><span>Metera</span></a>
+      <nav aria-label="Primary navigation">
+        <a href="/">Home</a>
+        <a href="/support.html">Support</a>
+        <a href="/security.html">Security</a>
+      </nav>
+    </header>
+    <main class="legal">
+      <p class="eyebrow">Privacy</p>
+      <h1>Privacy Policy</h1>
+      <p>Last updated: May 28, 2026</p>
+
+      <h2>Overview</h2>
+      <p>
+        Metera helps users save and reuse AI workflow context. During beta, Metera is designed around explicit user action:
+        the browser extension composes, inserts, captures, and saves only when the user clicks the relevant control.
+      </p>
+
+      <h2>Information We Process</h2>
+      <p>Depending on how you use Metera, we may process:</p>
+      <ul>
+        <li>account email and workspace membership information;</li>
+        <li>API requests routed through the Metera control plane;</li>
+        <li>workflow names, captures, summaries, context packs, and related metadata you choose to save;</li>
+        <li>cache outcome, policy, usage, cost, and diagnostic metadata;</li>
+        <li>browser extension settings, local permissions, and local capture previews stored in your browser.</li>
+      </ul>
+
+      <h2>Browser Extension Data</h2>
+      <p>
+        The Metera Browser Bridge does not silently scrape provider pages and does not auto-submit prompts.
+        Captured text is staged locally for review and is sent to Metera only after an explicit save action.
+      </p>
+
+      <h2>How We Use Information</h2>
+      <ul>
+        <li>to provide workflow memory and prompt composition;</li>
+        <li>to operate exact, semantic, and shadow cache features;</li>
+        <li>to enforce policy, namespace, tenant, and workspace boundaries;</li>
+        <li>to provide savings, usage, and operational visibility;</li>
+        <li>to debug, secure, and improve the beta product.</li>
+      </ul>
+
+      <h2>Retention And Deletion</h2>
+      <p>
+        Browser-local capture previews can be cleared by the user. Saved workflow content is retained in Metera until deleted
+        or until a beta retention process removes it. During beta, contact support for deletion requests.
+      </p>
+
+      <h2>Contact</h2>
+      <p>Questions or deletion requests: <a href="mailto:joshua@getmetera.com">joshua@getmetera.com</a></p>
+    </main>
+    <footer>
+      <span>© <span id="year"></span> Metera</span>
+      <a href="/privacy.html">Privacy</a>
+      <a href="/support.html">Support</a>
+      <a href="/security.html">Security</a>
+    </footer>
+    <script>document.getElementById("year").textContent = new Date().getFullYear();</script>
+  </body>
+</html>
