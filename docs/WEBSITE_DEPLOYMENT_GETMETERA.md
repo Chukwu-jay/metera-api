@@ -23,7 +23,7 @@ Current custom domain:
 
 Support/contact email used in the site:
 
-- `joshua@getmetera.com`
+- `support@getmetera.com`
 
 ## Recommended First Deployment: GitHub Pages
 
