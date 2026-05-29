@@ -12,6 +12,7 @@ NAMESPACE = os.getenv("METERA_NAMESPACE", "smoke-test")
 API_KEY = os.getenv("METERA_API_KEY") or os.getenv("METERA_CONTROLPLANE_STATIC_API_KEY")
 WAIT_TIMEOUT_SECONDS = float(os.getenv("METERA_SMOKE_WAIT_TIMEOUT_SECONDS", "120"))
 WAIT_INTERVAL_SECONDS = float(os.getenv("METERA_SMOKE_WAIT_INTERVAL_SECONDS", "2"))
+CHAT_MODEL = os.getenv("METERA_SMOKE_CHAT_MODEL", "gpt-4o-mini")
 
 
 def main() -> int:
@@ -24,7 +25,7 @@ def main() -> int:
         return 1
 
     payload = {
-        "model": "gpt-4o-mini",
+        "model": CHAT_MODEL,
         "messages": [{"role": "user", "content": "hello from smoke test"}],
         "stream": False,
     }
@@ -33,8 +34,9 @@ def main() -> int:
         payload,
         headers=_auth_headers({"x-metera-namespace": NAMESPACE}),
     )
-    if response.get("model") != "gpt-4o-mini":
-        print("FAIL: unexpected chat response model")
+    response_model = response.get("model")
+    if not _model_matches_request(requested_model=CHAT_MODEL, response_model=response_model):
+        print(f"FAIL: unexpected chat response model: requested={CHAT_MODEL!r} response={response_model!r}")
         return 1
     if "choices" not in response:
         print("FAIL: chat response missing choices")
@@ -46,8 +48,16 @@ def main() -> int:
         return 1
 
     print("PASS: Metera smoke test completed")
-    print(json.dumps({"health": health["status"], "namespace": NAMESPACE}, indent=2))
+    print(json.dumps({"health": health["status"], "namespace": NAMESPACE, "requested_model": CHAT_MODEL, "response_model": response_model}, indent=2))
     return 0
+
+
+def _model_matches_request(*, requested_model: str, response_model: object) -> bool:
+    if not isinstance(response_model, str):
+        return False
+    if response_model == requested_model:
+        return True
+    return response_model.startswith(f"{requested_model}-")
 
 
 def _wait_for_health(*, timeout_seconds: float, interval_seconds: float) -> dict | None:
