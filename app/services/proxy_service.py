@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+import hashlib
 from time import perf_counter
 
 from fastapi import HTTPException, status
@@ -140,6 +141,7 @@ class ProxyService:
         cache_key = build_exact_cache_key(namespace=context.namespace, exact_hash=exact_hash)
 
         semantic_bypass_reason = None
+        semantic_request_fingerprint = _semantic_request_fingerprint(scrub_result.scrubbed_text)
         response: ChatCompletionResponse
         cache_outcome: str
 
@@ -174,26 +176,41 @@ class ProxyService:
                     text=scrub_result.scrubbed_text,
                 )
                 if semantic_hit:
-                    increment("cache_semantic_hits")
-                    response = ChatCompletionResponse.model_validate(semantic_hit.payload)
-                    estimated_cost = _record_usage_and_cost(response=response, savings=True)
-                    response.metera = {
-                        **response.metera,
-                        "cache": "semantic_hit",
-                        "namespace": context.namespace,
-                        "request_id": context.request_id,
-                        "semantic_similarity": semantic_hit.similarity,
-                        "scrubbed": scrub_result.scrubbed_text != scrub_result.original_text,
-                        "pii_entities": scrub_result.pii_entities,
-                        "secret_entities": scrub_result.secret_entities,
-                        "scrub_level": self.dlp_policy.scrub_level,
-                        "active_custom_detectors": list(self.dlp_policy.active_custom_detectors),
-                        "semantic_metadata": semantic_hit.metadata,
-                        "estimated_cost_usd": estimated_cost,
-                        "estimated_savings_usd": estimated_cost,
-                    }
-                    cache_outcome = "semantic_hit"
-                    _record_latency("semantic_hit", started)
+                    hit_metadata = getattr(semantic_hit, "metadata", {}) or {}
+                    if hit_metadata.get("request_fingerprint") != semantic_request_fingerprint:
+                        semantic_bypass_reason = "shadow_regression_alert"
+                        response, cache_outcome = await self._serve_upstream(
+                            request=request,
+                            context=context,
+                            scrub_result=scrub_result,
+                            normalized=normalized,
+                            cache_key=cache_key,
+                            semantic_allowed=semantic_allowed,
+                            semantic_bypass_reason=semantic_bypass_reason,
+                            background_tasks=background_tasks,
+                            started=started,
+                        )
+                    else:
+                        increment("cache_semantic_hits")
+                        response = ChatCompletionResponse.model_validate(semantic_hit.payload)
+                        estimated_cost = _record_usage_and_cost(response=response, savings=True)
+                        response.metera = {
+                            **response.metera,
+                            "cache": "semantic_hit",
+                            "namespace": context.namespace,
+                            "request_id": context.request_id,
+                            "semantic_similarity": semantic_hit.similarity,
+                            "scrubbed": scrub_result.scrubbed_text != scrub_result.original_text,
+                            "pii_entities": scrub_result.pii_entities,
+                            "secret_entities": scrub_result.secret_entities,
+                            "scrub_level": self.dlp_policy.scrub_level,
+                            "active_custom_detectors": list(self.dlp_policy.active_custom_detectors),
+                            "semantic_metadata": semantic_hit.metadata,
+                            "estimated_cost_usd": estimated_cost,
+                            "estimated_savings_usd": estimated_cost,
+                        }
+                        cache_outcome = "semantic_hit"
+                        _record_latency("semantic_hit", started)
                 else:
                     response, cache_outcome = await self._serve_upstream(
                         request=request,
@@ -295,6 +312,7 @@ class ProxyService:
                     "temperature": request.temperature,
                     "stream": request.stream,
                     "model": request.model,
+                    "request_fingerprint": semantic_request_fingerprint,
                 },
             )
             increment("semantic_candidates_indexed")
@@ -540,6 +558,10 @@ def run_detector_dry_run(*, text: str, policy: DLPPolicy) -> DetectorDryRunRespo
         pii_entities=scrub_result.pii_entities,
         secret_entities=scrub_result.secret_entities,
     )
+
+
+def _semantic_request_fingerprint(scrubbed_text: str) -> str:
+    return hashlib.sha256(scrubbed_text.encode("utf-8")).hexdigest()
 
 
 def _semantic_reuse_allowed(*, request: ChatCompletionRequest, settings, overrides: dict | None = None) -> tuple[bool, str | None]:
