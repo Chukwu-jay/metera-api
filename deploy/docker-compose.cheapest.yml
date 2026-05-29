@@ -1,0 +1,115 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: metera-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      metera:
+        condition: service_healthy
+
+  metera:
+    build:
+      context: ..
+    container_name: metera-app
+    restart: unless-stopped
+    environment:
+      METERA_ENVIRONMENT: production
+      METERA_DEPLOYMENT_PROFILE: pilot
+      METERA_STRICT_STARTUP_VALIDATION: "true"
+      METERA_UPSTREAM_BASE_URL: ${METERA_UPSTREAM_BASE_URL:?set METERA_UPSTREAM_BASE_URL}
+      METERA_UPSTREAM_API_KEY: ${METERA_UPSTREAM_API_KEY:?set METERA_UPSTREAM_API_KEY}
+      METERA_UPSTREAM_TIMEOUT_SECONDS: ${METERA_UPSTREAM_TIMEOUT_SECONDS:-60}
+      METERA_UPSTREAM_MAX_RETRIES: ${METERA_UPSTREAM_MAX_RETRIES:-1}
+      METERA_EXACT_CACHE_BACKEND: redis
+      METERA_REDIS_URL: redis://redis:6379/0
+      METERA_SEMANTIC_ENABLED: "true"
+      METERA_SEMANTIC_STORE_BACKEND: pgvector
+      METERA_SEMANTIC_STORE_DSN: postgresql://metera_user:${METERA_POSTGRES_PASSWORD:?set METERA_POSTGRES_PASSWORD}@pgvector:5432/metera
+      METERA_POLICY_STORE_DSN: postgresql://metera_user:${METERA_POSTGRES_PASSWORD:?set METERA_POSTGRES_PASSWORD}@pgvector:5432/metera
+      METERA_SEMANTIC_MODEL_NAME: sentence-transformers/all-MiniLM-L6-v2
+      METERA_SEMANTIC_THRESHOLD: "0.9"
+      METERA_SEMANTIC_SHADOW_THRESHOLD: "0.8"
+      METERA_SEMANTIC_MAX_TEMPERATURE: "0.2"
+      METERA_DUAL_MODE_ENABLED: "false"
+      METERA_SEMANTIC_DISABLED_NAMESPACE_PREFIXES: browser-,agent-,workflow-
+      METERA_SEMANTIC_HIGH_RISK_NAMESPACE_PREFIXES: faq-billing
+      METERA_DLP_ENABLED: "true"
+      METERA_DLP_ANALYZER_MODE: auto
+      METERA_DLP_SCRUB_LEVEL: technical
+      METERA_DLP_CUSTOM_DETECTORS_YAML_PATH: ./config/detectors.example.yaml
+      METERA_NAMESPACE_HEADER: x-metera-namespace
+      METERA_PROVIDER_AUTH_HEADER: authorization
+      METERA_ADMIN_API_KEY: ${METERA_ADMIN_API_KEY:?set METERA_ADMIN_API_KEY}
+      METERA_CONTROLPLANE_IDENTITY_ENABLED: "true"
+      METERA_CONTROLPLANE_IDENTITY_SEED_ENABLED: "true"
+      METERA_CONTROLPLANE_STATIC_API_KEY: ${METERA_CONTROLPLANE_STATIC_API_KEY:?set METERA_CONTROLPLANE_STATIC_API_KEY}
+      METERA_TENANT_QUERY_PARAM_FALLBACK_ENABLED: "false"
+      METERA_REQUEST_EVENT_LOGGING_ENABLED: "true"
+      METERA_REQUEST_LEDGER_ENABLED: "true"
+      METERA_RISK_EVENT_LOGGING_ENABLED: "true"
+      METERA_SHADOW_SAVINGS_LOGGING_ENABLED: "true"
+      METERA_SCOPED_POLICY_ENABLED: "true"
+      METERA_ROLLUPS_ENABLED: "true"
+      METERA_BILLING_PREP_ENABLED: "true"
+      METERA_IDENTITY_GUARD_ENABLED: "true"
+      METERA_IDENTITY_STRICT_MODE_ENABLED: "true"
+      METERA_IDENTITY_PARTITIONING_ENABLED: "true"
+      METERA_MULTIMODAL_HARD_ALIGNMENT_ENABLED: "true"
+      METERA_POLICY_TIMING_BREAKDOWN_ENABLED: "true"
+      METERA_DEFAULT_EXACT_TTL_SECONDS: ${METERA_DEFAULT_EXACT_TTL_SECONDS:-3600}
+      METERA_DEFAULT_SEMANTIC_TTL_SECONDS: ${METERA_DEFAULT_SEMANTIC_TTL_SECONDS:-86400}
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8000/ready'); data=json.load(r); raise SystemExit(0 if r.status == 200 and data.get('status') == 'ready' else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 120s
+    depends_on:
+      redis:
+        condition: service_started
+      pgvector:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: metera-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    expose:
+      - "6379"
+    volumes:
+      - redis-data:/data
+
+  pgvector:
+    image: pgvector/pgvector:pg16
+    container_name: metera-pgvector
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: metera
+      POSTGRES_USER: metera_user
+      POSTGRES_PASSWORD: ${METERA_POSTGRES_PASSWORD:?set METERA_POSTGRES_PASSWORD}
+    expose:
+      - "5432"
+    volumes:
+      - pgvector-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metera_user -d metera"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+volumes:
+  caddy-data:
+  caddy-config:
+  redis-data:
+  pgvector-data:

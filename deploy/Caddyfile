@@ -1,0 +1,8 @@
+{
+	email support@getmetera.com
+}
+
+api.getmetera.com {
+	encode gzip zstd
+	reverse_proxy metera:8000
+}
