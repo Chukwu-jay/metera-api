@@ -17,7 +17,7 @@ if [[ -z "$UPSTREAM_API_KEY" ]]; then
 fi
 
 apt-get update
-apt-get install -y ca-certificates curl git openssl
+apt-get install -y ca-certificates curl git openssl python-is-python3
 
 install -m 0755 -d /etc/apt/keyrings
 if [[ ! -f /etc/apt/keyrings/docker.asc ]]; then

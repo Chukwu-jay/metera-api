@@ -260,6 +260,7 @@ class ProxyService:
         background_tasks,
         started: float,
     ) -> tuple[ChatCompletionResponse, str]:
+        semantic_request_fingerprint = _semantic_request_fingerprint(scrub_result.scrubbed_text)
         increment("cache_misses")
         shadow_threshold = self._policy_value("semantic_shadow_threshold", getattr(self.settings, "semantic_shadow_threshold", 0.8))
         live_threshold = self._policy_value("semantic_threshold", getattr(self.settings, "semantic_threshold", 0.9))
