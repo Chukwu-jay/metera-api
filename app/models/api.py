@@ -128,6 +128,8 @@ class PolicySettingsResponse(BaseModel):
     dlp_enabled: bool
     dlp_scrub_level: str
     semantic_enabled: bool
+    semantic_hardening_preset: str = "custom"
+    semantic_hardening_presets: list[dict[str, Any]] = Field(default_factory=list)
     semantic_threshold: float
     semantic_shadow_threshold: float
     semantic_max_temperature: float
@@ -140,6 +142,7 @@ class PolicyUpdateRequest(BaseModel):
     dlp_enabled: bool | None = None
     dlp_scrub_level: str | None = Field(default=None, max_length=32)
     semantic_enabled: bool | None = None
+    semantic_hardening_preset: Literal["conservative", "balanced", "aggressive"] | None = None
     semantic_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     semantic_shadow_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     semantic_max_temperature: float | None = Field(default=None, ge=0.0, le=2.0)

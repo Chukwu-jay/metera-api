@@ -8,6 +8,8 @@ from app.models.api import ChatCompletionRequest, ChatMessage
 
 def test_policy_defaults_include_shadow_threshold() -> None:
     assert DEFAULT_POLICY_STATE["semantic_shadow_threshold"] is None
+    assert DEFAULT_POLICY_STATE["semantic_hardening_preset"] is None
+    assert PRODUCTION_POLICY_DEFAULTS["semantic_hardening_preset"] == "conservative"
     assert PRODUCTION_POLICY_DEFAULTS["semantic_threshold"] == 0.9
     assert PRODUCTION_POLICY_DEFAULTS["semantic_shadow_threshold"] == 0.8
 

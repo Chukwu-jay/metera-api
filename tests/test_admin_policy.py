@@ -73,3 +73,66 @@ def test_admin_policy_post_applies_persisted_overrides() -> None:
     assert body["overrides_active"]["semantic_threshold"] is True
     assert follow_up.json()["dlp_enabled"] is False
     assert follow_up.json()["semantic_threshold"] == 0.91
+
+
+def test_admin_policy_post_applies_semantic_hardening_preset() -> None:
+    app = build_app()
+    app.dependency_overrides[get_settings] = lambda: type(
+        "S",
+        (),
+        {
+            "admin_api_key": "secret",
+            "dlp_enabled": True,
+            "dlp_scrub_level": "technical",
+            "semantic_enabled": True,
+            "semantic_threshold": 0.9,
+            "semantic_shadow_threshold": 0.8,
+            "semantic_max_temperature": 0.2,
+        },
+    )()
+    client = TestClient(app)
+
+    response = client.post(
+        "/admin/policy",
+        headers={"x-metera-admin-key": "secret"},
+        json={"semantic_hardening_preset": "balanced"},
+    )
+    follow_up = client.get("/admin/policy", headers={"x-metera-admin-key": "secret"})
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["semantic_hardening_preset"] == "balanced"
+    assert body["semantic_threshold"] == 0.86
+    assert body["semantic_shadow_threshold"] == 0.78
+    assert body["semantic_max_temperature"] == 0.2
+    assert body["overrides_active"]["semantic_hardening_preset"] is True
+    assert follow_up.json()["semantic_hardening_preset"] == "balanced"
+
+
+def test_admin_policy_get_returns_preset_catalog() -> None:
+    app = build_app()
+    app.dependency_overrides[get_settings] = lambda: type(
+        "S",
+        (),
+        {
+            "admin_api_key": "secret",
+            "dlp_enabled": True,
+            "dlp_scrub_level": "technical",
+            "semantic_enabled": True,
+            "semantic_threshold": 0.9,
+            "semantic_shadow_threshold": 0.8,
+            "semantic_max_temperature": 0.2,
+        },
+    )()
+    client = TestClient(app)
+
+    response = client.get("/admin/policy", headers={"x-metera-admin-key": "secret"})
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["semantic_hardening_preset"] == "conservative"
+    assert [preset["name"] for preset in body["semantic_hardening_presets"]] == ["conservative", "balanced", "aggressive"]

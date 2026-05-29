@@ -9,6 +9,7 @@ import urllib.request
 
 BASE_URL = os.getenv("METERA_BASE_URL", "http://127.0.0.1:8000")
 NAMESPACE = os.getenv("METERA_NAMESPACE", "smoke-test")
+API_KEY = os.getenv("METERA_API_KEY") or os.getenv("METERA_CONTROLPLANE_STATIC_API_KEY")
 WAIT_TIMEOUT_SECONDS = float(os.getenv("METERA_SMOKE_WAIT_TIMEOUT_SECONDS", "120"))
 WAIT_INTERVAL_SECONDS = float(os.getenv("METERA_SMOKE_WAIT_INTERVAL_SECONDS", "2"))
 
@@ -30,7 +31,7 @@ def main() -> int:
     response = _post_json(
         f"{BASE_URL}/v1/chat/completions",
         payload,
-        headers={"x-metera-namespace": NAMESPACE},
+        headers=_auth_headers({"x-metera-namespace": NAMESPACE}),
     )
     if response.get("model") != "gpt-4o-mini":
         print("FAIL: unexpected chat response model")
@@ -79,6 +80,13 @@ def _post_json(url: str, payload: dict, headers: dict[str, str] | None = None) -
     )
     with urllib.request.urlopen(request) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _auth_headers(headers: dict[str, str] | None = None) -> dict[str, str]:
+    merged = dict(headers or {})
+    if API_KEY:
+        merged["authorization"] = f"Bearer {API_KEY}"
+    return merged
 
 
 if __name__ == "__main__":

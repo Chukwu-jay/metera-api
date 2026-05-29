@@ -4,6 +4,7 @@ from app.cache.exact_cache import ExactCache
 from app.core.config import Settings, get_settings
 from app.core.dependencies import get_exact_cache, require_admin
 from app.core.policy_state import get_policy_state, update_policy_state
+from app.core.semantic_policy_presets import apply_semantic_hardening_preset, infer_semantic_hardening_preset, preset_catalog
 from app.models.api import (
     CacheInvalidationRequest,
     CacheInvalidationResponse,
@@ -37,7 +38,7 @@ async def update_policy(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> PolicySettingsResponse:
-    updates = payload.model_dump()
+    updates = apply_semantic_hardening_preset(payload.model_dump())
     overrides = await update_policy_state(request.app, updates)
     resolved = _resolve_policy(settings, overrides)
     return PolicySettingsResponse(
@@ -80,11 +81,15 @@ async def invalidate_cache(
 
 
 def _resolve_policy(settings: Settings, overrides: dict) -> dict:
-    return {
-        "dlp_enabled": overrides.get("dlp_enabled") if overrides.get("dlp_enabled") is not None else settings.dlp_enabled,
-        "dlp_scrub_level": overrides.get("dlp_scrub_level") or settings.dlp_scrub_level,
-        "semantic_enabled": overrides.get("semantic_enabled") if overrides.get("semantic_enabled") is not None else settings.semantic_enabled,
-        "semantic_threshold": overrides.get("semantic_threshold") if overrides.get("semantic_threshold") is not None else settings.semantic_threshold,
-        "semantic_shadow_threshold": overrides.get("semantic_shadow_threshold") if overrides.get("semantic_shadow_threshold") is not None else settings.semantic_shadow_threshold,
-        "semantic_max_temperature": overrides.get("semantic_max_temperature") if overrides.get("semantic_max_temperature") is not None else settings.semantic_max_temperature,
+    resolved = {
+        "dlp_enabled": overrides.get("dlp_enabled") if overrides.get("dlp_enabled") is not None else getattr(settings, "dlp_enabled", True),
+        "dlp_scrub_level": overrides.get("dlp_scrub_level") or getattr(settings, "dlp_scrub_level", "technical"),
+        "semantic_enabled": overrides.get("semantic_enabled") if overrides.get("semantic_enabled") is not None else getattr(settings, "semantic_enabled", True),
+        "semantic_hardening_preset": overrides.get("semantic_hardening_preset"),
+        "semantic_threshold": overrides.get("semantic_threshold") if overrides.get("semantic_threshold") is not None else getattr(settings, "semantic_threshold", 0.9),
+        "semantic_shadow_threshold": overrides.get("semantic_shadow_threshold") if overrides.get("semantic_shadow_threshold") is not None else getattr(settings, "semantic_shadow_threshold", 0.8),
+        "semantic_max_temperature": overrides.get("semantic_max_temperature") if overrides.get("semantic_max_temperature") is not None else getattr(settings, "semantic_max_temperature", 0.2),
     }
+    resolved["semantic_hardening_preset"] = infer_semantic_hardening_preset(resolved)
+    resolved["semantic_hardening_presets"] = preset_catalog()
+    return resolved

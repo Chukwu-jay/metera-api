@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import time
@@ -9,11 +10,26 @@ import uuid
 
 BASE_URL = os.getenv("METERA_BASE_URL", "http://127.0.0.1:8000")
 NAMESPACE = os.getenv("METERA_NAMESPACE", f"semantic-demo-{uuid.uuid4().hex[:8]}")
+API_KEY = os.getenv("METERA_API_KEY") or os.getenv("METERA_CONTROLPLANE_STATIC_API_KEY")
 WAIT_TIMEOUT_SECONDS = float(os.getenv("METERA_SMOKE_WAIT_TIMEOUT_SECONDS", "120"))
 WAIT_INTERVAL_SECONDS = float(os.getenv("METERA_SMOKE_WAIT_INTERVAL_SECONDS", "2"))
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Demonstrate Metera semantic-cache behavior. By default this validates the hardened beta posture: "
+            "a paraphrased near-match is not served live and is marked as shadow/regression evidence. "
+            "Use --expect-live-hit only when intentionally testing a permissive tenant policy."
+        )
+    )
+    parser.add_argument(
+        "--expect-live-hit",
+        action="store_true",
+        help="Expect the paraphrased request to be served as a live semantic_hit instead of a hardened miss.",
+    )
+    args = parser.parse_args()
+
     health = _wait_for_health(timeout_seconds=WAIT_TIMEOUT_SECONDS, interval_seconds=WAIT_INTERVAL_SECONDS)
     if health is None or health.get("status") != "ok":
         print("FAIL: app did not become healthy")
@@ -46,7 +62,7 @@ def main() -> int:
             "stream": False,
             "temperature": 0.0,
         },
-        headers={"x-metera-namespace": NAMESPACE},
+        headers=_auth_headers({"x-metera-namespace": NAMESPACE}),
     )
     second = _post_json(
         f"{BASE_URL}/v1/chat/completions",
@@ -56,27 +72,43 @@ def main() -> int:
             "stream": False,
             "temperature": 0.0,
         },
-        headers={"x-metera-namespace": NAMESPACE},
+        headers=_auth_headers({"x-metera-namespace": NAMESPACE}),
     )
 
     if first.get("metera", {}).get("cache") != "miss":
         print("FAIL: first request was expected to be a miss")
         print(json.dumps(first, indent=2))
         return 1
-    if second.get("metera", {}).get("cache") != "semantic_hit":
-        print("FAIL: second request was expected to be a semantic hit")
-        print(json.dumps(second, indent=2))
-        return 1
 
-    print("PASS: semantic demo proved semantic hit after paraphrased miss")
+    second_metera = second.get("metera", {})
+    second_cache = second_metera.get("cache")
+    bypass_reason = second_metera.get("semantic_bypass_reason")
+    if args.expect_live_hit:
+        if second_cache != "semantic_hit":
+            print("FAIL: permissive semantic demo expected a live semantic_hit")
+            print(json.dumps(second, indent=2))
+            return 1
+        outcome = "live_semantic_hit"
+        message = "PASS: semantic demo proved live semantic reuse under the active policy"
+    else:
+        if second_cache != "miss" or bypass_reason != "shadow_regression_alert":
+            print("FAIL: hardened semantic demo expected a miss with shadow_regression_alert")
+            print(json.dumps(second, indent=2))
+            return 1
+        outcome = "hardened_shadow_regression_alert"
+        message = "PASS: semantic demo proved hardened posture blocks live paraphrase reuse"
+
+    print(message)
     print(
         json.dumps(
             {
                 "namespace": NAMESPACE,
+                "outcome": outcome,
                 "first_cache": first.get("metera", {}).get("cache"),
-                "second_cache": second.get("metera", {}).get("cache"),
-                "second_similarity": second.get("metera", {}).get("semantic_similarity"),
-                "request_id": second.get("metera", {}).get("request_id"),
+                "second_cache": second_cache,
+                "second_similarity": second_metera.get("semantic_similarity"),
+                "semantic_bypass_reason": bypass_reason,
+                "request_id": second_metera.get("request_id"),
             },
             indent=2,
         )
@@ -111,6 +143,13 @@ def _post_json(url: str, payload: dict, headers: dict[str, str] | None = None) -
     )
     with urllib.request.urlopen(request) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _auth_headers(headers: dict[str, str] | None = None) -> dict[str, str]:
+    merged = dict(headers or {})
+    if API_KEY:
+        merged["authorization"] = f"Bearer {API_KEY}"
+    return merged
 
 
 if __name__ == "__main__":

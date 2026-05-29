@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.core.app_services import get_app_services
 from app.core.config import Settings, get_settings
 from app.core.dependencies import require_admin
+from app.core.semantic_policy_presets import apply_semantic_hardening_preset, infer_semantic_hardening_preset, preset_catalog
 from app.models.api import (
     EffectivePolicyInspectResponse,
     NamespacePolicyOverrideRequest,
@@ -40,6 +41,15 @@ async def get_policy(request: Request, settings: Settings = Depends(get_settings
             "dlp_enabled": effective.dlp_enabled,
             "dlp_scrub_level": effective.dlp_scrub_level,
             "semantic_enabled": effective.semantic_enabled,
+            "semantic_hardening_preset": infer_semantic_hardening_preset(
+                {
+                    "semantic_enabled": effective.semantic_enabled,
+                    "semantic_threshold": effective.semantic_threshold,
+                    "semantic_shadow_threshold": effective.semantic_shadow_threshold,
+                    "semantic_max_temperature": effective.semantic_max_temperature,
+                }
+            ),
+            "semantic_hardening_presets": preset_catalog(),
             "semantic_threshold": effective.semantic_threshold,
             "semantic_shadow_threshold": effective.semantic_shadow_threshold,
             "semantic_max_temperature": effective.semantic_max_temperature,
@@ -51,7 +61,7 @@ async def get_policy(request: Request, settings: Settings = Depends(get_settings
 async def update_policy(payload: PolicyUpdateRequest, request: Request, settings: Settings = Depends(get_settings)) -> PolicySettingsResponse:
     from app.core.policy_state import update_policy_state
 
-    updates = payload.model_dump()
+    updates = apply_semantic_hardening_preset(payload.model_dump())
     overrides = await update_policy_state(request.app, updates)
     resolved = _resolve_policy(settings, overrides)
     return PolicySettingsResponse(**resolved, overrides_active={key: value is not None for key, value in overrides.items()})
@@ -215,14 +225,18 @@ async def inspect_effective_policy(
 
 
 def _resolve_policy(settings: Settings, overrides: dict) -> dict:
-    return {
+    resolved = {
         "dlp_enabled": overrides.get("dlp_enabled") if overrides.get("dlp_enabled") is not None else settings.dlp_enabled,
         "dlp_scrub_level": overrides.get("dlp_scrub_level") or settings.dlp_scrub_level,
         "semantic_enabled": overrides.get("semantic_enabled") if overrides.get("semantic_enabled") is not None else settings.semantic_enabled,
+        "semantic_hardening_preset": overrides.get("semantic_hardening_preset"),
         "semantic_threshold": overrides.get("semantic_threshold") if overrides.get("semantic_threshold") is not None else settings.semantic_threshold,
         "semantic_shadow_threshold": overrides.get("semantic_shadow_threshold") if overrides.get("semantic_shadow_threshold") is not None else settings.semantic_shadow_threshold,
         "semantic_max_temperature": overrides.get("semantic_max_temperature") if overrides.get("semantic_max_temperature") is not None else settings.semantic_max_temperature,
     }
+    resolved["semantic_hardening_preset"] = infer_semantic_hardening_preset(resolved)
+    resolved["semantic_hardening_presets"] = preset_catalog()
+    return resolved
 
 
 def _require_policy_repository(request: Request):
