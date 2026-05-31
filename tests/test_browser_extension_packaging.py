@@ -128,6 +128,9 @@ def test_popup_console_is_wired_to_c5_workflow_intelligence_routes() -> None:
     assert "exportContextDocument" in popup_js
     assert "insertHandoffIntoPrompt" in popup_js
     assert "Metera Handoff" in popup_js
+    assert "visibleDiagnostics" in popup_js
+    assert "No unrecovered runtime errors recorded" in popup_js
+    assert "selection?.selectedText" in popup_js
     assert "Cloud workflow sync is not enabled on this API yet" in popup_js
     assert "Created local beta workflow" in popup_js
     assert "Saved capture locally to this beta workflow" in popup_js

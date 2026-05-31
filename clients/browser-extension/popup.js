@@ -451,12 +451,13 @@ async function refreshProviderStatus() {
   if (lastPromptInspection?.diagnostics?.candidates?.length) {
     inspectionLines.push(`Prompt candidates: ${lastPromptInspection.diagnostics.candidates.map((item) => `${item.tagName}${item.id ? `#${item.id}` : ''}@${item.score}`).join(', ')}`);
   }
-  if (diagnostics.length) {
-    const recent = diagnostics.slice(0, 4).map((event) => `${event.at} ${event.action} ${event.level}${event.recovery ? ` -> ${event.recovery}` : ''}${event.error ? ` | ${event.error}` : ''}`);
+  const visibleDiagnostics = diagnostics.filter((event) => event.level === 'error' || !event.recovery);
+  if (visibleDiagnostics.length) {
+    const recent = visibleDiagnostics.slice(0, 4).map((event) => `${event.at} ${event.action} ${event.level}${event.error ? ` | ${event.error}` : ''}`);
     inspectionLines.push('Recent runtime events:');
     inspectionLines.push(...recent);
   } else {
-    inspectionLines.push('No runtime errors recorded yet.');
+    inspectionLines.push('No unrecovered runtime errors recorded.');
   }
   diagnosticsOutput.textContent = inspectionLines.join('\n');
 }
@@ -653,6 +654,8 @@ async function captureSelectedResponse() {
   applyClassifications(['reusable_snippet', 'evidence']);
   const warning = capture.textLength > LONG_SELECTED_CAPTURE_THRESHOLD ? ' Long selected/thread capture: review before saving.' : '';
   setStatus(captureStatus, `Selected/thread text captured locally.${warning}`);
+  await saveSessionContext({ provider: payload.surface || currentProviderName(), latest_response: payload.selectedText, latest_response_length: payload.selectedText.length, title: lastTabContext?.title || '', url: lastTabContext?.url || '' });
+  setStatus(sessionStatus, `Captured selected text (${payload.selectedText.length} chars). Generate a handoff note next.`);
   await refreshProviderStatus();
 }
 
@@ -668,9 +671,16 @@ async function captureLatestAssistantResponse() {
 }
 
 async function generateHandoffNote() {
-  const context = await getSessionContext();
+  let context = await getSessionContext();
   if (!selectedTextPreview.value.trim() && context.latest_response) {
     selectedTextPreview.value = context.latest_response;
+  }
+  if (!selectedTextPreview.value.trim()) {
+    const selection = await getSelection().catch(() => null);
+    if (selection?.selectedText) {
+      await stageLocalCapture({ text: selection.selectedText, captureMode: 'selected_response', surface: selection.surface });
+      context = await saveSessionContext({ provider: selection.surface || currentProviderName(), latest_response: selection.selectedText, latest_response_length: selection.selectedText.length, title: lastTabContext?.title || '', url: lastTabContext?.url || '' });
+    }
   }
   const markdown = buildHandoffMarkdown(context);
   handoffOutput.value = markdown;
