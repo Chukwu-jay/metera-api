@@ -46,6 +46,8 @@ const captureStatus = document.getElementById('captureStatus');
 const WORKFLOW_COMPOSE_ROUTE = '/compose';
 const WORKFLOW_COMPOSE_PREVIEW_ROUTE = '/compose/preview';
 const LOCAL_CAPTURE_KEY = 'localCapturePreview';
+const LOCAL_WORKFLOWS_KEY = 'localBetaWorkflows';
+const LOCAL_CAPTURES_KEY = 'localBetaCaptures';
 const LONG_SELECTED_CAPTURE_THRESHOLD = 6000;
 
 let lastPromptInspection = null;
@@ -53,7 +55,7 @@ let lastTabContext = null;
 let lastCaptureMode = null;
 
 function setStatus(node, message) { node.textContent = message; }
-async function getState() { return chrome.storage.local.get(['apiBase', 'email', 'workspaceId', 'challengeId', 'verificationCode', 'apiKey', 'namespace', 'defaultTarget', 'workflowId', 'composeMode', 'composeInstruction', 'newWorkflowGoal', 'useSelectedTextToggle', 'permissions']); }
+async function getState() { return chrome.storage.local.get(['apiBase', 'email', 'workspaceId', 'challengeId', 'verificationCode', 'apiKey', 'namespace', 'defaultTarget', 'workflowId', 'composeMode', 'composeInstruction', 'newWorkflowGoal', 'useSelectedTextToggle', 'permissions', LOCAL_WORKFLOWS_KEY, LOCAL_CAPTURES_KEY]); }
 async function saveState(patch) { await chrome.storage.local.set(patch); }
 function sessionStorageArea() { return chrome.storage.session || chrome.storage.local; }
 async function storageGet(area, keys) { return area.get(keys); }
@@ -80,6 +82,25 @@ function formatError(error) {
   return details.join(' | ');
 }
 function safeParseUrl(url) { try { return new URL(url); } catch { return null; } }
+function isLocalWorkflowId(id) { return String(id || '').startsWith('local_'); }
+
+async function getLocalWorkflows() {
+  const state = await getState();
+  return Array.isArray(state[LOCAL_WORKFLOWS_KEY]) ? state[LOCAL_WORKFLOWS_KEY] : [];
+}
+
+async function saveLocalWorkflows(workflows) {
+  await chrome.storage.local.set({ [LOCAL_WORKFLOWS_KEY]: workflows });
+}
+
+async function getLocalCaptures() {
+  const state = await getState();
+  return Array.isArray(state[LOCAL_CAPTURES_KEY]) ? state[LOCAL_CAPTURES_KEY] : [];
+}
+
+async function saveLocalCaptures(captures) {
+  await chrome.storage.local.set({ [LOCAL_CAPTURES_KEY]: captures });
+}
 
 function activeRetentionPolicy() {
   return captureRetentionPolicy.value || 'discard_after_save';
@@ -209,28 +230,19 @@ async function saveDirectBetaKey() {
 }
 
 async function requestLoginCode() {
-  const apiBase = apiBaseInput.value.trim();
-  const email = emailInput.value.trim();
-  const workspaceId = workspaceIdInput.value.trim();
-  await saveState({ apiBase, email, workspaceId });
-  const body = await fetchJson(`${apiBase}/v1/auth/login-code/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email, workspace_id: workspaceId, display_name: 'Browser Bridge Login' }) });
-  challengeIdInput.value = body.challenge_id;
-  verificationCodeInput.value = body.verification_code || '';
-  await saveState({ challengeId: body.challenge_id, verificationCode: body.verification_code || '' });
-  setStatus(loginStatus, `Login code issued. Challenge: ${body.challenge_id}`);
+  setStatus(loginStatus, 'Login codes are not enabled for Beta 001. Use "Sign in with beta key" with the API key and namespace provided by Metera.');
 }
 
 async function exchangeLoginCode() {
-  const apiBase = apiBaseInput.value.trim();
-  const body = await fetchJson(`${apiBase}/v1/auth/login-code/exchange`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ challenge_id: challengeIdInput.value.trim(), verification_code: verificationCodeInput.value.trim() }) });
-  await saveState({ apiBase, apiKey: body.api_key.plaintext_api_key, namespace: body.bootstrap.recommended_namespace, challengeId: challengeIdInput.value.trim(), verificationCode: verificationCodeInput.value.trim(), defaultTarget: targetSelect.value });
-  apiKeyInput.value = body.api_key.plaintext_api_key;
-  namespaceInput.value = body.bootstrap.recommended_namespace || '';
-  setStatus(loginStatus, `Signed in as ${body.account.email}. Namespace: ${body.bootstrap.recommended_namespace}`);
-  await refreshWorkflows();
+  setStatus(loginStatus, 'Exchange code is not used in Beta 001. Paste the beta API key and namespace, then click "Sign in with beta key".');
 }
 
-async function savePermissions() { await saveState({ permissions: selectedPermissionState() }); setStatus(permissionStatus, 'Saved per-action permissions locally.'); }
+async function savePermissions() {
+  const permissions = selectedPermissionState();
+  await saveState({ permissions });
+  const selected = Object.values(permissions).filter(Boolean).length;
+  setStatus(permissionStatus, selected ? `Saved ${selected} permission setting(s) locally.` : 'Saved. No action permissions are enabled yet.');
+}
 function populateWorkflowSelect(workflows, selectedId = '') {
   workflowSelect.innerHTML = '';
   const empty = document.createElement('option');
@@ -240,7 +252,7 @@ function populateWorkflowSelect(workflows, selectedId = '') {
   for (const workflow of workflows) {
     const option = document.createElement('option');
     option.value = workflow.id;
-    option.textContent = `${workflow.goal} [${workflow.id}]`;
+    option.textContent = `${workflow.goal} [${isLocalWorkflowId(workflow.id) ? 'local beta' : workflow.id}]`;
     workflowSelect.appendChild(option);
   }
   if (selectedId && workflows.some((workflow) => workflow.id === selectedId)) {
@@ -251,14 +263,30 @@ async function loadPermissionHints() { const state = await getState(); if (!stat
 
 async function refreshWorkflows({ preserveWorkflowId } = {}) {
   const state = await getState();
-  if (!state.apiBase || !state.apiKey) { populateWorkflowSelect([]); return; }
-  const workflows = await fetchJson(`${state.apiBase}/v1/account/workflows`, { headers: authHeaders(state) });
+  const localWorkflows = await getLocalWorkflows();
+  if (!state.apiBase || !state.apiKey) {
+    populateWorkflowSelect(localWorkflows, preserveWorkflowId || state.workflowId || '');
+    setStatus(handoffStatus, localWorkflows.length ? `Loaded ${localWorkflows.length} local beta workflow(s). Sign in to sync later.` : 'No workflows yet. Type a goal and click Create fresh workflow.');
+    return;
+  }
+  let remoteWorkflows = [];
+  let remoteUnavailable = false;
+  try {
+    remoteWorkflows = await fetchJson(`${state.apiBase}/v1/account/workflows`, { headers: authHeaders(state) });
+  } catch (error) {
+    remoteUnavailable = true;
+  }
+  const workflows = [...remoteWorkflows, ...localWorkflows];
   const selectedId = preserveWorkflowId || workflowSelect.value || state.workflowId || '';
   populateWorkflowSelect(workflows, selectedId);
   await saveState({ workflowId: workflowSelect.value || '' });
-  setStatus(handoffStatus, workflows.length ? `Loaded ${workflows.length} workflow(s).` : 'No workflows were available. Create a fresh workflow to start clean.');
+  if (remoteUnavailable) {
+    setStatus(handoffStatus, workflows.length ? `Loaded ${workflows.length} local beta workflow(s). Cloud workflow sync is not enabled on this API yet.` : 'Cloud workflow sync is not enabled on this API yet. Type a goal and click Create fresh workflow to continue locally.');
+  } else {
+    setStatus(handoffStatus, workflows.length ? `Loaded ${workflows.length} workflow(s).` : 'No workflows were available. Create a fresh workflow to start clean.');
+  }
   if (workflowSelect.value) {
-    await refreshWorkflowIntelligence();
+    await refreshWorkflowIntelligence().catch((error) => setStatus(handoffStatus, `Workflow selected. Intelligence unavailable: ${formatError(error)}`));
   } else {
     workflowStatus.innerHTML = '';
   }
@@ -333,6 +361,18 @@ async function refreshProviderStatus() {
 async function refreshWorkflowIntelligence() {
   const state = await getState();
   if (!workflowSelect.value) { workflowStatus.innerHTML = ''; return; }
+  if (isLocalWorkflowId(workflowSelect.value)) {
+    const workflows = await getLocalWorkflows();
+    const workflow = workflows.find((item) => item.id === workflowSelect.value);
+    const captures = (await getLocalCaptures()).filter((item) => item.workflow_id === workflowSelect.value);
+    renderPills(workflowStatus, [
+      'Freshness: local beta',
+      `Goal: ${workflow?.goal || '(unknown)'}`,
+      `Recent captures: ${captures.length}`,
+      'Sync: not yet sent to Metera cloud',
+    ]);
+    return;
+  }
   const body = await fetchJson(`${state.apiBase}/v1/workflows/${workflowSelect.value}/intelligence`, { headers: authHeaders(state) });
   const lines = [
     `Freshness: ${body.staleness_state}`,
@@ -346,6 +386,18 @@ async function refreshWorkflowIntelligence() {
   if (body.warnings?.length) {
     setStatus(handoffStatus, `Workflow loaded with warnings: ${body.warnings.join(' | ')}`);
   }
+}
+
+function buildLocalPrompt({ workflow, instruction, selectedText }) {
+  const parts = [
+    `You are continuing this Metera workflow: ${workflow.goal}`,
+    '',
+    `Mode: ${modeSelect.value || 'resume'}`,
+  ];
+  if (instruction) parts.push('', `Current instruction: ${instruction}`);
+  if (selectedText) parts.push('', 'Relevant selected context:', selectedText);
+  parts.push('', 'Use the existing context, avoid repeating setup already captured, and give the next useful action.');
+  return parts.join('\n');
 }
 
 function tracePrefix(item) {
@@ -371,6 +423,15 @@ async function composePrompt(previewOnly) {
   const selectedTextPayload = useSelectedTextToggle.checked ? await getSelection().catch(() => null) : null;
   const selectedText = selectedTextPayload?.selectedText || '';
   if (selectedText) selectedTextPreview.value = selectedText;
+  if (isLocalWorkflowId(workflowSelect.value)) {
+    const workflow = (await getLocalWorkflows()).find((item) => item.id === workflowSelect.value);
+    const content = buildLocalPrompt({ workflow: workflow || { goal: newWorkflowGoal.value.trim() || defaultWorkflowGoal() }, instruction: composeInstruction.value.trim(), selectedText });
+    restartPackOutput.value = content;
+    sourceTraceOutput.textContent = 'Local beta compose\n+ workflow goal\n+ optional instruction\n+ optional selected page text';
+    setStatus(handoffStatus, previewOnly ? 'Local compose preview loaded.' : 'Local composed prompt ready.');
+    await saveState({ workflowId: workflowSelect.value, defaultTarget: targetSelect.value, composeMode: modeSelect.value, composeInstruction: composeInstruction.value, useSelectedTextToggle: useSelectedTextToggle.checked });
+    return { content, local: true };
+  }
   const route = previewOnly ? WORKFLOW_COMPOSE_PREVIEW_ROUTE : WORKFLOW_COMPOSE_ROUTE;
   const body = await fetchJson(`${state.apiBase}/v1/workflows/${workflowSelect.value}${route}`, {
     method: 'POST', headers: authHeaders(state), body: JSON.stringify({ target: targetSelect.value, mode: modeSelect.value, instruction: composeInstruction.value.trim() || undefined, selected_text: selectedText || undefined })
@@ -394,13 +455,33 @@ async function composeAndInsert() {
 async function createFreshWorkflow() {
   const state = await getState();
   const goal = newWorkflowGoal.value.trim() || defaultWorkflowGoal();
-  const body = await fetchJson(`${state.apiBase}/v1/workflows`, {
-    method: 'POST', headers: authHeaders(state), body: JSON.stringify({ goal, metadata: { created_by: 'browser_extension', fresh_workflow: true, target_hint: targetSelect.value } })
-  });
+  if (!goal) throw new Error('Type a workflow goal first.');
+  let body = null;
+  if (state.apiBase && state.apiKey) {
+    try {
+      body = await fetchJson(`${state.apiBase}/v1/workflows`, {
+        method: 'POST', headers: authHeaders(state), body: JSON.stringify({ goal, metadata: { created_by: 'browser_extension', fresh_workflow: true, target_hint: targetSelect.value } })
+      });
+    } catch (error) {
+      body = null;
+    }
+  }
+  if (!body) {
+    body = {
+      id: `local_${Date.now()}`,
+      goal,
+      status: 'local_beta',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      target_hint: targetSelect.value,
+    };
+    const workflows = await getLocalWorkflows();
+    await saveLocalWorkflows([body, ...workflows.filter((item) => item.id !== body.id)]);
+  }
   newWorkflowGoal.value = body.goal;
   await saveState({ workflowId: body.id, newWorkflowGoal: newWorkflowGoal.value });
   await refreshWorkflows({ preserveWorkflowId: body.id });
-  setStatus(handoffStatus, `Created fresh workflow ${body.id}. You are now starting clean.`);
+  setStatus(handoffStatus, isLocalWorkflowId(body.id) ? `Created local beta workflow. Compose and capture are now enabled.` : `Created fresh workflow ${body.id}. You are now starting clean.`);
 }
 
 async function clearWorkflowSelection() {
@@ -413,23 +494,53 @@ async function clearWorkflowSelection() {
 async function saveStructuredCapture() {
   const state = await getState();
   if (!(state.permissions || {}).save_conversation_summary && !(state.permissions || {}).capture_selected_response) throw new Error('Enable a save or capture permission first.');
-  if (!workflowSelect.value) throw new Error('Choose or create a workflow first.');
+  if (!workflowSelect.value) {
+    await createFreshWorkflow();
+  }
   const tab = await getCurrentTab();
   const text = summaryInput.value.trim() || selectedTextPreview.value.trim();
   if (!text) throw new Error('Capture selected text, capture the latest response, or provide a summary first.');
   if (lastCaptureMode === 'selected_response' && text.length > LONG_SELECTED_CAPTURE_THRESHOLD && !window.confirm('This selected/thread capture is long. Save it to the workflow anyway?')) {
     throw new Error('Long selected/thread capture was not saved.');
   }
-  const body = await fetchJson(`${state.apiBase}/v1/workflows/${workflowSelect.value}/captures`, {
-    method: 'POST', headers: authHeaders(state), body: JSON.stringify({ target: targetSelect.value, title: 'Browser workflow capture', content: text, selected_text: selectedTextPreview.value.trim() || undefined, source_surface: 'browser_extension', page_url: tab?.url, page_title: tab?.title, classifications: selectedClassifications(), metadata: { capture_mode: lastCaptureMode || 'manual_summary', local_capture_retention: activeRetentionPolicy(), local_capture_state: 'saved_to_workflow' } })
-  });
-  const warningText = (body.warnings || []).length ? ` Warnings: ${body.warnings.join(' | ')}` : '';
-  setStatus(captureStatus, `Saved classified capture ${body.capture_id}.${warningText}`);
-  setStatus(localCaptureStatus, `Local capture saved_to_workflow. retention=${activeRetentionPolicy()}`);
+  let savedRemote = false;
+  let captureId = `local_capture_${Date.now()}`;
+  let warningText = '';
+  if (!isLocalWorkflowId(workflowSelect.value) && state.apiBase && state.apiKey) {
+    try {
+      const body = await fetchJson(`${state.apiBase}/v1/workflows/${workflowSelect.value}/captures`, {
+        method: 'POST', headers: authHeaders(state), body: JSON.stringify({ target: targetSelect.value, title: 'Browser workflow capture', content: text, selected_text: selectedTextPreview.value.trim() || undefined, source_surface: 'browser_extension', page_url: tab?.url, page_title: tab?.title, classifications: selectedClassifications(), metadata: { capture_mode: lastCaptureMode || 'manual_summary', local_capture_retention: activeRetentionPolicy(), local_capture_state: 'saved_to_workflow' } })
+      });
+      savedRemote = true;
+      captureId = body.capture_id;
+      warningText = (body.warnings || []).length ? ` Warnings: ${body.warnings.join(' | ')}` : '';
+    } catch (error) {
+      savedRemote = false;
+    }
+  }
+  if (!savedRemote) {
+    const captures = await getLocalCaptures();
+    await saveLocalCaptures([
+      {
+        id: captureId,
+        workflow_id: workflowSelect.value,
+        target: targetSelect.value,
+        text,
+        selected_text: selectedTextPreview.value.trim() || '',
+        classifications: selectedClassifications(),
+        page_url: tab?.url || '',
+        page_title: tab?.title || '',
+        created_at: new Date().toISOString(),
+      },
+      ...captures,
+    ]);
+  }
+  setStatus(captureStatus, savedRemote ? `Saved classified capture ${captureId}.${warningText}` : `Saved capture locally to this beta workflow. Cloud workflow sync is not enabled on this API yet.`);
+  setStatus(localCaptureStatus, `Local capture ${savedRemote ? 'saved_to_workflow' : 'saved_locally'}. retention=${activeRetentionPolicy()}`);
   if (activeRetentionPolicy() === 'discard_after_save') {
     await clearLocalCapture('saved_to_workflow and deleted locally');
   }
-  await refreshWorkflowIntelligence();
+  await refreshWorkflowIntelligence().catch(() => {});
 }
 
 async function captureSelectedResponse() {

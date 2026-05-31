@@ -8,7 +8,7 @@
   <body>
     <main>
       <h1>Metera Browser Bridge</h1>
-      <p class="small">Milestone C.6: make the workflow loop dependable enough for real user testing without silent scraping or auto-submit.</p>
+      <p class="small">Beta 001: sign in with your beta key, create a workflow, compose into ChatGPT, and capture useful results.</p>
 
       <section>
         <h2>Metera login</h2>
@@ -19,7 +19,7 @@
         <p class="small">Use the beta key and namespace provided by Metera. Login codes are only for environments where that flow is enabled.</p>
         <label>Email<input id="email" placeholder="owner@example.com" /></label>
         <label>Workspace ID<input id="workspaceId" placeholder="workspace_1" /></label>
-        <button id="requestCodeButton">Request login code</button>
+        <button id="requestCodeButton" class="secondary">Request login code</button>
         <div class="inline">
           <label>Challenge ID<input id="challengeId" /></label>
           <label>Verification code<input id="verificationCode" /></label>
@@ -41,9 +41,9 @@
         <h2>Workflow status</h2>
         <button id="refreshWorkflowsButton" class="secondary">Refresh workflows</button>
         <label>Workflow<select id="workflowSelect"></select></label>
-        <label>Fresh workflow goal<input id="newWorkflowGoal" placeholder="Claude smoke test - clean workflow" /></label>
+        <label>Fresh workflow goal<input id="newWorkflowGoal" placeholder="Example: Set up ROS on Ubuntu without repeating prior setup" /></label>
         <div class="inline">
-          <button id="createWorkflowButton" class="secondary">Create fresh workflow</button>
+          <button id="createWorkflowButton">Create fresh workflow</button>
           <button id="clearWorkflowSelectionButton" class="secondary">Start clean</button>
         </div>
         <div id="workflowStatus" class="card-list"></div>
@@ -118,7 +118,7 @@
             <option value="evidence">evidence</option>
           </select>
         </label>
-        <button id="saveSummaryButton">Save structured capture</button>
+        <button id="saveSummaryButton">Save capture to workflow</button>
         <div id="captureStatus" class="status"></div>
       </section>
 

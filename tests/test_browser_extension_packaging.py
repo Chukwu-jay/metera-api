@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -104,6 +105,8 @@ def test_popup_console_is_wired_to_c5_workflow_intelligence_routes() -> None:
         "sourceTraceOutput",
         "composePreviewButton",
         "composeInsertButton",
+        "createWorkflowButton",
+        "saveSummaryButton",
         "classificationSelect",
         "saveSummaryButton",
     ):
@@ -111,6 +114,9 @@ def test_popup_console_is_wired_to_c5_workflow_intelligence_routes() -> None:
 
     assert "Sign in with beta key" in popup_html
     assert "saveDirectBetaKey" in popup_js
+    assert "Cloud workflow sync is not enabled on this API yet" in popup_js
+    assert "Created local beta workflow" in popup_js
+    assert "Saved capture locally to this beta workflow" in popup_js
 
     for route_fragment in (
         "/intelligence",
@@ -147,3 +153,17 @@ def test_popup_capture_retention_controls_are_wired() -> None:
     assert "stageLocalCapture" in popup_js
     assert "local_capture_retention" in popup_js
     assert "Long selected/thread capture" in popup_js
+
+
+def test_popup_buttons_have_click_handlers() -> None:
+    source_dir = Path(__file__).resolve().parents[1] / "clients" / "browser-extension"
+    popup_html = (source_dir / "popup.html").read_text(encoding="utf-8")
+    popup_js = (source_dir / "popup.js").read_text(encoding="utf-8")
+
+    button_ids = re.findall(r'<button[^>]+id="([^"]+)"', popup_html)
+    assert button_ids
+    for button_id in button_ids:
+        assert f"{button_id}.addEventListener('click'" in popup_js
+
+    for input_id in ("apiBase", "apiKey", "namespace", "newWorkflowGoal", "summaryInput"):
+        assert f'id="{input_id}"' in popup_html
