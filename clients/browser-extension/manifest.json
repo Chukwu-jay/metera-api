@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Metera Browser Bridge",
+  "version": "0.1.0",
+  "description": "Insert Metera restart packs into ChatGPT/Claude sessions and save browser conversation context back to Metera.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://claude.ai/*",
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*"
+  ],
+  "action": {
+    "default_title": "Metera Browser Bridge",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*"
+      ],
+      "js": ["page-adapters.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

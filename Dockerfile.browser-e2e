@@ -1,0 +1,21 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+COPY pyproject.toml README.md ./
+COPY app ./app
+COPY clients ./clients
+COPY scripts ./scripts
+COPY config ./config
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends xauth \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --no-cache-dir --upgrade "pip>=25.3" "setuptools>=78.1.1" wheel \
+    && python -m pip install --no-cache-dir -e ".[dev,browser-e2e]" \
+    && python -m playwright install --with-deps chromium
+
+CMD ["sh", "-c", "tail -f /dev/null"]

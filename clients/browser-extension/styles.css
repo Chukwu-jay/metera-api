@@ -1,0 +1,26 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+main { width: 400px; padding: 16px; }
+h1, h2 { margin: 0 0 12px; font-size: 16px; }
+section { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid rgba(148, 163, 184, 0.25); }
+label { display: block; font-size: 12px; margin-bottom: 8px; }
+input, select, textarea, button { width: 100%; box-sizing: border-box; margin-top: 4px; border-radius: 8px; border: 1px solid #334155; background: #111827; color: #e2e8f0; padding: 8px 10px; }
+textarea { min-height: 88px; resize: vertical; }
+button { cursor: pointer; background: #2563eb; border: none; margin-top: 8px; }
+button.secondary { background: #334155; }
+button.danger { background: #991b1b; }
+.inline { display: flex; gap: 8px; }
+.inline > * { flex: 1; }
+.small { font-size: 12px; color: #94a3b8; }
+.status { min-height: 18px; font-size: 12px; color: #cbd5e1; white-space: pre-wrap; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.checkbox-row input { width: auto; margin: 0; }
+.card-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill { font-size: 11px; padding: 6px 8px; border-radius: 999px; background: #1e293b; color: #cbd5e1; }
+.trace { white-space: pre-wrap; font-size: 12px; color: #cbd5e1; background: #111827; border: 1px solid #334155; border-radius: 8px; padding: 10px; min-height: 72px; }
+.trace.compact { min-height: 48px; }

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Metera Browser Bridge</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Metera Browser Bridge</h1>
+      <p class="small">Milestone C.6: make the workflow loop dependable enough for real user testing without silent scraping or auto-submit.</p>
+
+      <section>
+        <h2>Metera login</h2>
+        <label>Metera API base<input id="apiBase" placeholder="https://api.getmetera.com" /></label>
+        <label>Beta API key<input id="apiKey" type="password" autocomplete="off" placeholder="Paste your Metera beta key" /></label>
+        <label>Namespace<input id="namespace" placeholder="beta-browser-001" /></label>
+        <button id="saveDirectKeyButton">Sign in with beta key</button>
+        <p class="small">Use the beta key and namespace provided by Metera. Login codes are only for environments where that flow is enabled.</p>
+        <label>Email<input id="email" placeholder="owner@example.com" /></label>
+        <label>Workspace ID<input id="workspaceId" placeholder="workspace_1" /></label>
+        <button id="requestCodeButton">Request login code</button>
+        <div class="inline">
+          <label>Challenge ID<input id="challengeId" /></label>
+          <label>Verification code<input id="verificationCode" /></label>
+        </div>
+        <button id="exchangeCodeButton">Exchange code</button>
+        <div id="loginStatus" class="status"></div>
+      </section>
+
+      <section>
+        <h2>Permissions</h2>
+        <div class="checkbox-row"><input type="checkbox" id="permInsert" /><label for="permInsert">Insert prompt into current page</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="permSaveSummary" /><label for="permSaveSummary">Save conversation summary to Metera</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="permCaptureSelection" /><label for="permCaptureSelection">Send selected or latest response text back to Metera</label></div>
+        <button id="savePermissionsButton" class="secondary">Save permissions</button>
+        <div id="permissionStatus" class="status"></div>
+      </section>
+
+      <section>
+        <h2>Workflow status</h2>
+        <button id="refreshWorkflowsButton" class="secondary">Refresh workflows</button>
+        <label>Workflow<select id="workflowSelect"></select></label>
+        <label>Fresh workflow goal<input id="newWorkflowGoal" placeholder="Claude smoke test - clean workflow" /></label>
+        <div class="inline">
+          <button id="createWorkflowButton" class="secondary">Create fresh workflow</button>
+          <button id="clearWorkflowSelectionButton" class="secondary">Start clean</button>
+        </div>
+        <div id="workflowStatus" class="card-list"></div>
+        <div id="handoffStatus" class="status"></div>
+      </section>
+
+      <section>
+        <h2>Provider status</h2>
+        <div id="providerStatus" class="card-list"></div>
+        <div id="diagnosticsOutput" class="trace compact"></div>
+      </section>
+
+      <section>
+        <h2>Compose with Metera</h2>
+        <label>Target
+          <select id="targetSelect">
+            <option value="chatgpt">ChatGPT</option>
+            <option value="claude">Claude</option>
+            <option value="generic">Generic</option>
+            <option value="codex">Codex</option>
+          </select>
+        </label>
+        <label>Mode
+          <select id="modeSelect">
+            <option value="resume">Resume</option>
+            <option value="continue">Continue</option>
+            <option value="plan">Plan</option>
+            <option value="debug">Debug</option>
+            <option value="summarize">Summarize</option>
+            <option value="handoff">Handoff</option>
+          </select>
+        </label>
+        <label>Instruction<textarea id="composeInstruction" placeholder="Optional explicit ask for this provider session."></textarea></label>
+        <div class="checkbox-row"><input type="checkbox" id="useSelectedTextToggle" checked /><label for="useSelectedTextToggle">Use current page selection as additional context when available</label></div>
+        <div class="inline">
+          <button id="composePreviewButton" class="secondary">Preview compose</button>
+          <button id="composeInsertButton">Compose + insert</button>
+        </div>
+        <button id="inspectPromptButton" class="secondary">Inspect prompt target</button>
+        <textarea id="restartPackOutput" placeholder="Composed prompt will appear here."></textarea>
+        <div id="sourceTraceOutput" class="trace"></div>
+      </section>
+
+      <section>
+        <h2>Save to workflow</h2>
+        <label>Captured text preview<textarea id="selectedTextPreview" placeholder="Captured selected text or latest assistant response will appear here."></textarea></label>
+        <div id="localCaptureStatus" class="status"></div>
+        <label>Local capture retention
+          <select id="captureRetentionPolicy">
+            <option value="discard_after_save">Delete local preview after save</option>
+            <option value="discard_on_popup_close">Keep only while popup is open</option>
+            <option value="discard_on_browser_close">Keep until browser session ends</option>
+            <option value="keep_until_manual_clear">Keep until manually cleared</option>
+          </select>
+        </label>
+        <div class="inline">
+          <button id="captureLatestResponseButton">Capture latest assistant response</button>
+          <button id="captureSelectionButton" class="secondary">Capture selected/thread text</button>
+        </div>
+        <button id="clearLocalCaptureButton" class="secondary">Clear local capture</button>
+        <label>Manual summary<textarea id="summaryInput" placeholder="What changed in this browser conversation?"></textarea></label>
+        <label>Classifications
+          <select id="classificationSelect" multiple size="8">
+            <option value="summary">summary</option>
+            <option value="decision">decision</option>
+            <option value="blocker">blocker</option>
+            <option value="completed_step">completed step</option>
+            <option value="pending_step">pending step</option>
+            <option value="next_action">next action</option>
+            <option value="reusable_snippet">reusable snippet</option>
+            <option value="handoff_note">handoff note</option>
+            <option value="evidence">evidence</option>
+          </select>
+        </label>
+        <button id="saveSummaryButton">Save structured capture</button>
+        <div id="captureStatus" class="status"></div>
+      </section>
+
+      <section>
+        <h2>Trust + permissions</h2>
+        <p class="small">Metera only composes, inspects, captures, and inserts when you click. It does not silently scrape or auto-submit prompts into provider UIs.</p>
+      </section>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
