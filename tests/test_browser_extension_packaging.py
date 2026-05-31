@@ -128,6 +128,10 @@ def test_popup_console_is_wired_to_c5_workflow_intelligence_routes() -> None:
     assert "exportContextDocument" in popup_js
     assert "insertHandoffIntoPrompt" in popup_js
     assert "Metera Handoff" in popup_js
+    assert "summarizeCapture" in popup_js
+    assert "Key Facts / Decisions" in popup_js
+    assert "Evidence Excerpt" in popup_js
+    assert "Do not restate the source thread" in popup_js
     assert "visibleDiagnostics" in popup_js
     assert "No unrecovered runtime errors recorded" in popup_js
     assert "selection?.selectedText" in popup_js

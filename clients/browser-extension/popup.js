@@ -131,6 +131,49 @@ function currentProviderName() {
   return url.hostname;
 }
 
+function cleanCapturedText(text) {
+  return String(text || '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+function splitSentences(text) {
+  return cleanCapturedText(text)
+    .replace(/\s+/g, ' ')
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
+}
+
+function truncateText(text, maxChars) {
+  const clean = cleanCapturedText(text);
+  if (clean.length <= maxChars) return clean;
+  return `${clean.slice(0, maxChars).trim()}...`;
+}
+
+function summarizeCapture(text) {
+  const sentences = splitSentences(text);
+  if (!sentences.length) return 'No captured context yet.';
+  return sentences.slice(0, 3).map((sentence) => `- ${truncateText(sentence, 220)}`).join('\n');
+}
+
+function extractUsefulLines(text, patterns, limit) {
+  const lines = cleanCapturedText(text).split('\n');
+  const matches = [];
+  for (const line of lines) {
+    const compact = line.trim();
+    if (!compact || compact.length < 8) continue;
+    if (patterns.some((pattern) => pattern.test(compact))) {
+      matches.push(`- ${truncateText(compact, 180)}`);
+    }
+    if (matches.length >= limit) break;
+  }
+  return matches;
+}
+
 function buildHandoffMarkdown(context = {}) {
   const provider = context.provider || currentProviderName();
   const title = context.title || lastTabContext?.title || `${provider} session`;
@@ -139,6 +182,9 @@ function buildHandoffMarkdown(context = {}) {
   const captured = selectedTextPreview.value.trim() || context.latest_response || '';
   const manual = summaryInput.value.trim();
   const instruction = composeInstruction.value.trim();
+  const keyFacts = extractUsefulLines(captured, [/\b(decided|decision|must|should|need to|important|because|use|install|run|error|failed|works|pass|blocker)\b/i], 5);
+  const openQuestions = extractUsefulLines(captured, [/\?|open question|unclear|todo|next|follow up|blocked/i], 4);
+  const evidenceExcerpt = truncateText(captured, 700);
   const lines = [
     `# Metera Handoff - ${title}`,
     '',
@@ -150,18 +196,23 @@ function buildHandoffMarkdown(context = {}) {
     '## Goal',
     goal,
     '',
-    '## What Was Captured',
-    captured || 'No assistant response or selected text has been captured yet.',
+    '## Short Summary',
+    summarizeCapture(captured),
   ];
+  if (keyFacts.length) lines.push('', '## Key Facts / Decisions', keyFacts.join('\n'));
+  if (openQuestions.length) lines.push('', '## Open Questions / Follow-ups', openQuestions.join('\n'));
   if (manual) lines.push('', '## Operator Notes', manual);
   if (instruction) lines.push('', '## Next Instruction', instruction);
   lines.push(
     '',
     '## Continue Prompt',
-    `Continue this work from the context above. Do not repeat setup already captured. Focus on the next useful step for: ${goal}`,
+    `Continue this work using the handoff above. Do not restate the source thread. Ask only for missing details, then give the next useful step for: ${goal}`,
+    '',
+    '## Evidence Excerpt',
+    evidenceExcerpt || 'No evidence excerpt captured.',
     '',
     '## Metera Notes',
-    '- This handoff was created from user-approved visible page context.',
+    '- This handoff is a compressed summary of user-approved visible page context.',
     '- It can be pasted into another LLM session for migration or continuation.',
   );
   return lines.join('\n');
