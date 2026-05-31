@@ -7,57 +7,50 @@
   </head>
   <body>
     <main>
-      <h1>Metera Browser Bridge</h1>
-      <p class="small">Beta 001: sign in with your beta key, create a workflow, compose into ChatGPT, and capture useful results.</p>
+      <header class="hero">
+        <h1>Metera</h1>
+        <p>Turn this AI chat into reusable context.</p>
+      </header>
 
-      <section>
-        <h2>Metera login</h2>
-        <label>Metera API base<input id="apiBase" placeholder="https://api.getmetera.com" /></label>
-        <label>Beta API key<input id="apiKey" type="password" autocomplete="off" placeholder="Paste your Metera beta key" /></label>
-        <label>Namespace<input id="namespace" placeholder="beta-browser-001" /></label>
-        <button id="saveDirectKeyButton">Sign in with beta key</button>
-        <p class="small">Use the beta key and namespace provided by Metera. Login codes are only for environments where that flow is enabled.</p>
-        <label>Email<input id="email" placeholder="owner@example.com" /></label>
-        <label>Workspace ID<input id="workspaceId" placeholder="workspace_1" /></label>
-        <button id="requestCodeButton" class="secondary">Request login code</button>
-        <div class="inline">
-          <label>Challenge ID<input id="challengeId" /></label>
-          <label>Verification code<input id="verificationCode" /></label>
+      <section class="panel">
+        <div class="grid-two">
+          <label>API base<input id="apiBase" placeholder="https://api.getmetera.com" /></label>
+          <label>Namespace<input id="namespace" placeholder="beta-browser-001" /></label>
         </div>
-        <button id="exchangeCodeButton">Exchange code</button>
+        <label>Beta API key<input id="apiKey" type="password" autocomplete="off" placeholder="Paste your Metera beta key" /></label>
+        <button id="saveDirectKeyButton">Sign in</button>
         <div id="loginStatus" class="status"></div>
       </section>
 
-      <section>
-        <h2>Permissions</h2>
-        <div class="checkbox-row"><input type="checkbox" id="permInsert" /><label for="permInsert">Insert prompt into current page</label></div>
-        <div class="checkbox-row"><input type="checkbox" id="permSaveSummary" /><label for="permSaveSummary">Save conversation summary to Metera</label></div>
-        <div class="checkbox-row"><input type="checkbox" id="permCaptureSelection" /><label for="permCaptureSelection">Send selected or latest response text back to Metera</label></div>
-        <button id="savePermissionsButton" class="secondary">Save permissions</button>
-        <div id="permissionStatus" class="status"></div>
+      <section class="panel primary-actions">
+        <button id="understandChatButton">Understand this chat</button>
+        <button id="captureLatestResponseButton">Capture latest response</button>
+        <button id="generateHandoffButton">Generate handoff note</button>
+        <button id="exportContextButton">Export context</button>
+        <button id="insertHandoffButton" class="secondary">Insert handoff into prompt</button>
+        <div id="sessionStatus" class="status"></div>
       </section>
 
-      <section>
-        <h2>Workflow status</h2>
-        <button id="refreshWorkflowsButton" class="secondary">Refresh workflows</button>
-        <label>Workflow<select id="workflowSelect"></select></label>
-        <label>Fresh workflow goal<input id="newWorkflowGoal" placeholder="Example: Set up ROS on Ubuntu without repeating prior setup" /></label>
-        <div class="inline">
-          <button id="createWorkflowButton">Create fresh workflow</button>
-          <button id="clearWorkflowSelectionButton" class="secondary">Start clean</button>
-        </div>
-        <div id="workflowStatus" class="card-list"></div>
-        <div id="handoffStatus" class="status"></div>
-      </section>
-
-      <section>
-        <h2>Provider status</h2>
+      <section class="panel">
+        <h2>Session context</h2>
         <div id="providerStatus" class="card-list"></div>
-        <div id="diagnosticsOutput" class="trace compact"></div>
+        <label>Captured text<textarea id="selectedTextPreview" placeholder="Capture the latest response, select text in the page, or type context here."></textarea></label>
+        <label>Handoff note<textarea id="handoffOutput" placeholder="Generate or edit a handoff note here."></textarea></label>
       </section>
 
-      <section>
-        <h2>Compose with Metera</h2>
+      <details class="panel">
+        <summary>Workflow memory</summary>
+        <label>Workflow goal<input id="newWorkflowGoal" placeholder="Example: Set up ROS on Ubuntu without repeating prior setup" /></label>
+        <div class="inline">
+          <button id="createWorkflowButton">Create workflow</button>
+          <button id="saveSummaryButton" class="secondary">Save capture</button>
+        </div>
+        <div class="inline">
+          <button id="composePreviewButton" class="secondary">Preview continue prompt</button>
+          <button id="composeInsertButton" class="secondary">Insert continue prompt</button>
+        </div>
+        <label>Workflow<select id="workflowSelect"></select></label>
+        <label>Instruction<textarea id="composeInstruction" placeholder="Optional ask for the next LLM session."></textarea></label>
         <label>Target
           <select id="targetSelect">
             <option value="chatgpt">ChatGPT</option>
@@ -76,21 +69,24 @@
             <option value="handoff">Handoff</option>
           </select>
         </label>
-        <label>Instruction<textarea id="composeInstruction" placeholder="Optional explicit ask for this provider session."></textarea></label>
-        <div class="checkbox-row"><input type="checkbox" id="useSelectedTextToggle" checked /><label for="useSelectedTextToggle">Use current page selection as additional context when available</label></div>
-        <div class="inline">
-          <button id="composePreviewButton" class="secondary">Preview compose</button>
-          <button id="composeInsertButton">Compose + insert</button>
-        </div>
-        <button id="inspectPromptButton" class="secondary">Inspect prompt target</button>
-        <textarea id="restartPackOutput" placeholder="Composed prompt will appear here."></textarea>
-        <div id="sourceTraceOutput" class="trace"></div>
-      </section>
+        <div class="checkbox-row"><input type="checkbox" id="useSelectedTextToggle" checked /><label for="useSelectedTextToggle">Use selected page text when available</label></div>
+        <button id="refreshWorkflowsButton" class="secondary">Refresh workflows</button>
+        <button id="clearWorkflowSelectionButton" class="secondary">Start clean</button>
+        <textarea id="restartPackOutput" placeholder="Continue prompt appears here."></textarea>
+        <div id="workflowStatus" class="card-list"></div>
+        <div id="sourceTraceOutput" class="trace compact"></div>
+        <div id="handoffStatus" class="status"></div>
+      </details>
 
-      <section>
-        <h2>Save to workflow</h2>
-        <label>Captured text preview<textarea id="selectedTextPreview" placeholder="Captured selected text or latest assistant response will appear here."></textarea></label>
-        <div id="localCaptureStatus" class="status"></div>
+      <details class="panel">
+        <summary>Advanced</summary>
+        <button id="inspectPromptButton" class="secondary">Inspect prompt target</button>
+        <button id="captureSelectionButton" class="secondary">Capture selected text</button>
+        <button id="clearLocalCaptureButton" class="secondary">Clear local capture</button>
+        <button id="savePermissionsButton" class="secondary">Save permissions</button>
+        <div class="checkbox-row"><input type="checkbox" id="permInsert" checked /><label for="permInsert">Allow prompt insertion</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="permSaveSummary" checked /><label for="permSaveSummary">Allow saving summaries</label></div>
+        <div class="checkbox-row"><input type="checkbox" id="permCaptureSelection" checked /><label for="permCaptureSelection">Allow selected/latest response capture</label></div>
         <label>Local capture retention
           <select id="captureRetentionPolicy">
             <option value="discard_after_save">Delete local preview after save</option>
@@ -99,12 +95,7 @@
             <option value="keep_until_manual_clear">Keep until manually cleared</option>
           </select>
         </label>
-        <div class="inline">
-          <button id="captureLatestResponseButton">Capture latest assistant response</button>
-          <button id="captureSelectionButton" class="secondary">Capture selected/thread text</button>
-        </div>
-        <button id="clearLocalCaptureButton" class="secondary">Clear local capture</button>
-        <label>Manual summary<textarea id="summaryInput" placeholder="What changed in this browser conversation?"></textarea></label>
+        <label>Manual summary<textarea id="summaryInput" placeholder="Optional note to save with captured context."></textarea></label>
         <label>Classifications
           <select id="classificationSelect" multiple size="8">
             <option value="summary">summary</option>
@@ -118,14 +109,19 @@
             <option value="evidence">evidence</option>
           </select>
         </label>
-        <button id="saveSummaryButton">Save capture to workflow</button>
+        <div id="localCaptureStatus" class="status"></div>
         <div id="captureStatus" class="status"></div>
-      </section>
-
-      <section>
-        <h2>Trust + permissions</h2>
-        <p class="small">Metera only composes, inspects, captures, and inserts when you click. It does not silently scrape or auto-submit prompts into provider UIs.</p>
-      </section>
+        <div id="permissionStatus" class="status"></div>
+        <div id="diagnosticsOutput" class="trace compact"></div>
+        <div class="hidden">
+          <input id="email" />
+          <input id="workspaceId" />
+          <input id="challengeId" />
+          <input id="verificationCode" />
+          <button id="requestCodeButton">Request login code</button>
+          <button id="exchangeCodeButton">Exchange code</button>
+        </div>
+      </details>
     </main>
     <script src="popup.js"></script>
   </body>

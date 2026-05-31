@@ -9,6 +9,12 @@ const saveDirectKeyButton = document.getElementById('saveDirectKeyButton');
 const requestCodeButton = document.getElementById('requestCodeButton');
 const exchangeCodeButton = document.getElementById('exchangeCodeButton');
 const loginStatus = document.getElementById('loginStatus');
+const understandChatButton = document.getElementById('understandChatButton');
+const generateHandoffButton = document.getElementById('generateHandoffButton');
+const exportContextButton = document.getElementById('exportContextButton');
+const insertHandoffButton = document.getElementById('insertHandoffButton');
+const sessionStatus = document.getElementById('sessionStatus');
+const handoffOutput = document.getElementById('handoffOutput');
 const permInsert = document.getElementById('permInsert');
 const permSaveSummary = document.getElementById('permSaveSummary');
 const permCaptureSelection = document.getElementById('permCaptureSelection');
@@ -46,6 +52,7 @@ const captureStatus = document.getElementById('captureStatus');
 const WORKFLOW_COMPOSE_ROUTE = '/compose';
 const WORKFLOW_COMPOSE_PREVIEW_ROUTE = '/compose/preview';
 const LOCAL_CAPTURE_KEY = 'localCapturePreview';
+const SESSION_CONTEXT_KEY = 'meteraSessionContext';
 const LOCAL_WORKFLOWS_KEY = 'localBetaWorkflows';
 const LOCAL_CAPTURES_KEY = 'localBetaCaptures';
 const LONG_SELECTED_CAPTURE_THRESHOLD = 6000;
@@ -55,7 +62,7 @@ let lastTabContext = null;
 let lastCaptureMode = null;
 
 function setStatus(node, message) { node.textContent = message; }
-async function getState() { return chrome.storage.local.get(['apiBase', 'email', 'workspaceId', 'challengeId', 'verificationCode', 'apiKey', 'namespace', 'defaultTarget', 'workflowId', 'composeMode', 'composeInstruction', 'newWorkflowGoal', 'useSelectedTextToggle', 'permissions', LOCAL_WORKFLOWS_KEY, LOCAL_CAPTURES_KEY]); }
+async function getState() { return chrome.storage.local.get(['apiBase', 'email', 'workspaceId', 'challengeId', 'verificationCode', 'apiKey', 'namespace', 'defaultTarget', 'workflowId', 'composeMode', 'composeInstruction', 'newWorkflowGoal', 'useSelectedTextToggle', 'permissions', LOCAL_WORKFLOWS_KEY, LOCAL_CAPTURES_KEY, SESSION_CONTEXT_KEY]); }
 async function saveState(patch) { await chrome.storage.local.set(patch); }
 function sessionStorageArea() { return chrome.storage.session || chrome.storage.local; }
 async function storageGet(area, keys) { return area.get(keys); }
@@ -83,6 +90,8 @@ function formatError(error) {
 }
 function safeParseUrl(url) { try { return new URL(url); } catch { return null; } }
 function isLocalWorkflowId(id) { return String(id || '').startsWith('local_'); }
+function nowIso() { return new Date().toISOString(); }
+function slugPart(value) { return String(value || 'metera').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'metera'; }
 
 async function getLocalWorkflows() {
   const state = await getState();
@@ -100,6 +109,62 @@ async function getLocalCaptures() {
 
 async function saveLocalCaptures(captures) {
   await chrome.storage.local.set({ [LOCAL_CAPTURES_KEY]: captures });
+}
+
+async function getSessionContext() {
+  const state = await getState();
+  return state[SESSION_CONTEXT_KEY] || {};
+}
+
+async function saveSessionContext(patch) {
+  const current = await getSessionContext();
+  const next = { ...current, ...patch, updated_at: nowIso() };
+  await chrome.storage.local.set({ [SESSION_CONTEXT_KEY]: next });
+  return next;
+}
+
+function currentProviderName() {
+  const url = safeParseUrl(lastTabContext?.url || '');
+  if (!url) return targetSelect.value || 'generic';
+  if (url.hostname.includes('chatgpt') || url.hostname.includes('openai')) return 'ChatGPT';
+  if (url.hostname.includes('claude')) return 'Claude';
+  return url.hostname;
+}
+
+function buildHandoffMarkdown(context = {}) {
+  const provider = context.provider || currentProviderName();
+  const title = context.title || lastTabContext?.title || `${provider} session`;
+  const url = context.url || lastTabContext?.url || '';
+  const goal = newWorkflowGoal.value.trim() || context.goal || 'Continue this AI work without losing context';
+  const captured = selectedTextPreview.value.trim() || context.latest_response || '';
+  const manual = summaryInput.value.trim();
+  const instruction = composeInstruction.value.trim();
+  const lines = [
+    `# Metera Handoff - ${title}`,
+    '',
+    `- Provider: ${provider}`,
+    `- Source: ${url || 'not recorded'}`,
+    `- Namespace: ${namespaceInput.value.trim() || 'not set'}`,
+    `- Created: ${nowIso()}`,
+    '',
+    '## Goal',
+    goal,
+    '',
+    '## What Was Captured',
+    captured || 'No assistant response or selected text has been captured yet.',
+  ];
+  if (manual) lines.push('', '## Operator Notes', manual);
+  if (instruction) lines.push('', '## Next Instruction', instruction);
+  lines.push(
+    '',
+    '## Continue Prompt',
+    `Continue this work from the context above. Do not repeat setup already captured. Focus on the next useful step for: ${goal}`,
+    '',
+    '## Metera Notes',
+    '- This handoff was created from user-approved visible page context.',
+    '- It can be pasted into another LLM session for migration or continuation.',
+  );
+  return lines.join('\n');
 }
 
 function activeRetentionPolicy() {
@@ -192,13 +257,14 @@ async function loadStateIntoUi() {
   modeSelect.value = state.composeMode || 'resume';
   composeInstruction.value = state.composeInstruction || '';
   newWorkflowGoal.value = state.newWorkflowGoal || '';
+  handoffOutput.value = state[SESSION_CONTEXT_KEY]?.handoff_markdown || '';
   const retention = (await chrome.storage.local.get(['captureRetentionPolicy'])).captureRetentionPolicy;
   captureRetentionPolicy.value = retention || 'discard_after_save';
   useSelectedTextToggle.checked = state.useSelectedTextToggle !== false;
   const permissions = state.permissions || {};
-  permInsert.checked = !!permissions.insert_restart_pack;
-  permSaveSummary.checked = !!permissions.save_conversation_summary;
-  permCaptureSelection.checked = !!permissions.capture_selected_response;
+  permInsert.checked = permissions.insert_restart_pack !== false;
+  permSaveSummary.checked = permissions.save_conversation_summary !== false;
+  permCaptureSelection.checked = permissions.capture_selected_response !== false;
   if (state.apiKey) setStatus(loginStatus, `Signed into Metera. Namespace: ${state.namespace || '(none)'}`);
   await loadPermissionHints();
   await restoreLocalCapturePreview();
@@ -209,6 +275,43 @@ async function loadStateIntoUi() {
     populateWorkflowSelect([]);
   }
   await refreshProviderStatus();
+}
+
+async function understandChat() {
+  const tab = await getCurrentTab();
+  lastTabContext = tab || lastTabContext;
+  let inspection = null;
+  let latest = null;
+  try {
+    inspection = await inspectPromptTarget();
+    lastPromptInspection = inspection;
+  } catch (error) {
+    inspection = { ok: false, error: formatError(error) };
+  }
+  try {
+    latest = await captureLatestResponse();
+    if (latest?.text) {
+      selectedTextPreview.value = latest.text;
+      lastCaptureMode = latest.captureMode || 'latest_assistant_response';
+    }
+  } catch (error) {
+    latest = { ok: false, error: formatError(error) };
+  }
+  const context = await saveSessionContext({
+    provider: inspection?.surface || currentProviderName(),
+    title: tab?.title || '',
+    url: tab?.url || '',
+    prompt_detected: !!inspection?.ok,
+    latest_response: latest?.text || selectedTextPreview.value.trim() || '',
+    latest_response_length: (latest?.text || '').length,
+  });
+  await refreshProviderStatus();
+  const parts = [
+    `Provider: ${context.provider || currentProviderName()}`,
+    inspection?.ok ? 'Prompt target: found' : `Prompt target: ${inspection?.error || 'not found'}`,
+    context.latest_response ? `Latest response: captured ${context.latest_response.length} chars` : 'Latest response: not captured yet',
+  ];
+  setStatus(sessionStatus, parts.join('\n'));
 }
 
 async function saveDirectBetaKey() {
@@ -559,10 +662,60 @@ async function captureLatestAssistantResponse() {
   await stageLocalCapture({ text: payload.text, captureMode: payload.captureMode || 'latest_assistant_response', surface: payload.surface });
   applyClassifications(['summary', 'decision', 'next_action']);
   setStatus(captureStatus, `Latest assistant response captured locally from ${payload.surface}. Review before saving to Metera.`);
+  await saveSessionContext({ provider: payload.surface || currentProviderName(), latest_response: payload.text, latest_response_length: payload.text.length, title: lastTabContext?.title || '', url: lastTabContext?.url || '' });
+  setStatus(sessionStatus, `Captured latest response (${payload.text.length} chars). Generate a handoff note next.`);
+  await refreshProviderStatus();
+}
+
+async function generateHandoffNote() {
+  const context = await getSessionContext();
+  if (!selectedTextPreview.value.trim() && context.latest_response) {
+    selectedTextPreview.value = context.latest_response;
+  }
+  const markdown = buildHandoffMarkdown(context);
+  handoffOutput.value = markdown;
+  await saveSessionContext({ handoff_markdown: markdown, goal: newWorkflowGoal.value.trim() });
+  setStatus(sessionStatus, 'Handoff note generated. You can export it or insert it into the current prompt.');
+}
+
+async function exportContextDocument() {
+  let markdown = handoffOutput.value.trim();
+  if (!markdown) {
+    await generateHandoffNote();
+    markdown = handoffOutput.value.trim();
+  }
+  const context = await getSessionContext();
+  const filename = `metera-handoff-${slugPart(context.provider || currentProviderName())}-${new Date().toISOString().slice(0, 10)}.md`;
+  const blob = new Blob([markdown + '\n'], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  setStatus(sessionStatus, `Exported ${filename}`);
+}
+
+async function insertHandoffIntoPrompt() {
+  const state = await getState();
+  if (!(state.permissions || {}).insert_restart_pack) throw new Error('Prompt insertion is disabled in Advanced permissions.');
+  let markdown = handoffOutput.value.trim();
+  if (!markdown) {
+    await generateHandoffNote();
+    markdown = handoffOutput.value.trim();
+  }
+  const injection = await injectIntoPage(markdown);
+  setStatus(sessionStatus, `Inserted handoff into ${injection.surface || currentProviderName()} prompt. Review it before sending.`);
   await refreshProviderStatus();
 }
 
 saveDirectKeyButton.addEventListener('click', async () => { try { await saveDirectBetaKey(); } catch (error) { setStatus(loginStatus, formatError(error)); } });
+understandChatButton.addEventListener('click', async () => { try { await understandChat(); } catch (error) { setStatus(sessionStatus, formatError(error)); } });
+generateHandoffButton.addEventListener('click', async () => { try { await generateHandoffNote(); } catch (error) { setStatus(sessionStatus, formatError(error)); } });
+exportContextButton.addEventListener('click', async () => { try { await exportContextDocument(); } catch (error) { setStatus(sessionStatus, formatError(error)); } });
+insertHandoffButton.addEventListener('click', async () => { try { await insertHandoffIntoPrompt(); } catch (error) { setStatus(sessionStatus, formatError(error)); } });
 requestCodeButton.addEventListener('click', async () => { try { await requestLoginCode(); } catch (error) { setStatus(loginStatus, formatError(error)); } });
 exchangeCodeButton.addEventListener('click', async () => { try { await exchangeLoginCode(); } catch (error) { setStatus(loginStatus, formatError(error)); } });
 savePermissionsButton.addEventListener('click', async () => { await savePermissions(); });

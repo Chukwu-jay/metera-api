@@ -101,6 +101,12 @@ def test_popup_console_is_wired_to_c5_workflow_intelligence_routes() -> None:
         "apiKey",
         "namespace",
         "saveDirectKeyButton",
+        "understandChatButton",
+        "captureLatestResponseButton",
+        "generateHandoffButton",
+        "exportContextButton",
+        "insertHandoffButton",
+        "handoffOutput",
         "workflowStatus",
         "sourceTraceOutput",
         "composePreviewButton",
@@ -112,8 +118,16 @@ def test_popup_console_is_wired_to_c5_workflow_intelligence_routes() -> None:
     ):
         assert f'id="{element_id}"' in popup_html
 
-    assert "Sign in with beta key" in popup_html
+    assert ">Sign in<" in popup_html
+    assert "Turn this AI chat into reusable context" in popup_html
+    assert "Generate handoff note" in popup_html
+    assert "Export context" in popup_html
     assert "saveDirectBetaKey" in popup_js
+    assert "understandChat" in popup_js
+    assert "buildHandoffMarkdown" in popup_js
+    assert "exportContextDocument" in popup_js
+    assert "insertHandoffIntoPrompt" in popup_js
+    assert "Metera Handoff" in popup_js
     assert "Cloud workflow sync is not enabled on this API yet" in popup_js
     assert "Created local beta workflow" in popup_js
     assert "Saved capture locally to this beta workflow" in popup_js
