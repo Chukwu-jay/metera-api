@@ -129,9 +129,13 @@ def test_popup_console_is_wired_to_c5_workflow_intelligence_routes() -> None:
     assert "insertHandoffIntoPrompt" in popup_js
     assert "Metera Handoff" in popup_js
     assert "summarizeCapture" in popup_js
-    assert "Key Facts / Decisions" in popup_js
+    assert "What Worked" in popup_js
+    assert "What Did Not Work" in popup_js
+    assert "Already Tried" in popup_js
+    assert "Preserve" in popup_js
+    assert "Prompt For Next LLM" in popup_js
     assert "Evidence Excerpt" in popup_js
-    assert "Do not restate the source thread" in popup_js
+    assert "Do not repeat failed attempts" in popup_js
     assert "visibleDiagnostics" in popup_js
     assert "No unrecovered runtime errors recorded" in popup_js
     assert "selection?.selectedText" in popup_js

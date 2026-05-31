@@ -174,6 +174,12 @@ function extractUsefulLines(text, patterns, limit) {
   return matches;
 }
 
+function fallbackList(text, label) {
+  const summary = summarizeCapture(text);
+  if (summary !== 'No captured context yet.') return summary;
+  return `- ${label}`;
+}
+
 function buildHandoffMarkdown(context = {}) {
   const provider = context.provider || currentProviderName();
   const title = context.title || lastTabContext?.title || `${provider} session`;
@@ -182,7 +188,10 @@ function buildHandoffMarkdown(context = {}) {
   const captured = selectedTextPreview.value.trim() || context.latest_response || '';
   const manual = summaryInput.value.trim();
   const instruction = composeInstruction.value.trim();
-  const keyFacts = extractUsefulLines(captured, [/\b(decided|decision|must|should|need to|important|because|use|install|run|error|failed|works|pass|blocker)\b/i], 5);
+  const worked = extractUsefulLines(captured, [/\b(worked|works|passed|pass|success|successful|fixed|resolved|confirmed|verified|green)\b/i], 5);
+  const didNotWork = extractUsefulLines(captured, [/\b(failed|fail|error|blocked|not working|did not work|doesn't work|broken|404|500|timeout|cannot|can't)\b/i], 5);
+  const alreadyTried = extractUsefulLines(captured, [/\b(tried|ran|tested|checked|attempted|used|opened|clicked|installed|configured|deployed|reloaded)\b/i], 6);
+  const preserve = extractUsefulLines(captured, [/\b(important|remember|preserve|must|should|namespace|api key|url|domain|commit|version|path|file|command|decision|constraint)\b/i], 6);
   const openQuestions = extractUsefulLines(captured, [/\?|open question|unclear|todo|next|follow up|blocked/i], 4);
   const evidenceExcerpt = truncateText(captured, 700);
   const lines = [
@@ -193,20 +202,30 @@ function buildHandoffMarkdown(context = {}) {
     `- Namespace: ${namespaceInput.value.trim() || 'not set'}`,
     `- Created: ${nowIso()}`,
     '',
-    '## Goal',
+    '## Thread About',
     goal,
     '',
-    '## Short Summary',
-    summarizeCapture(captured),
+    '## What Worked',
+    worked.length ? worked.join('\n') : fallbackList(captured, 'No confirmed working steps were identified.'),
+    '',
+    '## What Did Not Work',
+    didNotWork.length ? didNotWork.join('\n') : '- No explicit failures were identified.',
+    '',
+    '## Already Tried',
+    alreadyTried.length ? alreadyTried.join('\n') : '- No explicit attempts were identified.',
+    '',
+    '## Preserve',
+    preserve.length ? preserve.join('\n') : fallbackList(captured, 'Keep the captured context and source URL/title available.'),
   ];
-  if (keyFacts.length) lines.push('', '## Key Facts / Decisions', keyFacts.join('\n'));
   if (openQuestions.length) lines.push('', '## Open Questions / Follow-ups', openQuestions.join('\n'));
   if (manual) lines.push('', '## Operator Notes', manual);
-  if (instruction) lines.push('', '## Next Instruction', instruction);
   lines.push(
     '',
-    '## Continue Prompt',
-    `Continue this work using the handoff above. Do not restate the source thread. Ask only for missing details, then give the next useful step for: ${goal}`,
+    '## Next Best Step',
+    instruction || `Continue from the preserved context and produce the next useful step for: ${goal}`,
+    '',
+    '## Prompt For Next LLM',
+    `Continue from this handoff. Do not ask for details already listed. Do not repeat failed attempts. Do not restate the original thread. Start with the next best step for: ${goal}`,
     '',
     '## Evidence Excerpt',
     evidenceExcerpt || 'No evidence excerpt captured.',
